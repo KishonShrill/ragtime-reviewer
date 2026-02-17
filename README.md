@@ -64,12 +64,13 @@ The project currently focuses on analyzing and categorizing multiple-choice ques
 
 * **Subjects**: General Science, Chemistry, Physics, and Biology.
 * **Difficulty Levels**: Easy, Medium, Hard.
-* **Bloom's Taxonomy**: Specifically targeting Grade 12 Senior High School standards in the Philippines.
+* **Bloom's Taxonomy**: Remembering, Understanding, Applying.
+* **Pilot Testing**: Specifically targeting Grade 12 Senior High School standards in the Philippines.
 
 ---
 
 ## Credits
-**Author**: Chriscent Louis June M. Pingol
-**Degree**: BS Computer Science
-**Institution**: Mindanao State University – Iligan Institute of Technology
-**Thesis Panelists**: Sir Orven, Ma'am Liezel Daberao, Sir Renato Crisostomo
+* **Author**: Chriscent Louis June M. Pingol
+* **Degree**: BS Computer Science
+* **Institution**: Mindanao State University – Iligan Institute of Technology
+* **Thesis Panelists**: Sir Orven Llamos, Ma'am Liezel Daberao, Sir Renato Crisostomo
