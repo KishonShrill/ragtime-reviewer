@@ -84,6 +84,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
+export class BackendLinkError extends Error {
+  constructor(message: string = "The backend link cannot be reached!") {
+    super(message)
+    this.name = "BackendLinkError"
+  }
+}
+
+export class PasswordError extends Error {
+  constructor(message: string = "You have entered a wrong password!") {
+    super(message)
+    this.name = "PasswordError"
+  }
+}
+
+export class RoleInitializationError extends Error {
+  constructor(message: string = "The given secret is incorrect!") {
+    super(message)
+    this.name = "RoleInitializationError"
+  }
+}
+
+export class UnauthenticatedError extends Error {
+  constructor(message: string = "Unathenticated") {
+    super(message)
+    this.name = "UnathenticatedError"
+  }
+}
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) throw new Error("useAuth must be used within an AuthProvider");
