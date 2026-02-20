@@ -23,23 +23,22 @@ const LandingPage = () => {
     e.preventDefault();
     setLoading(true);
 
-    try {
-      await login(username, backendUrl, password, secret);
-      toast({
-        title: "Welcome!",
-        description: `Logged in as ${username}`,
-      });
-      navigate("/select");
-      
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Login Failed",
-        description: error.message || "Please check your credentials and try again.",
-      });
-    } finally {
-      setLoading(false);
-    }
+    const res = await login(username, backendUrl, password, secret);
+    res.match(
+      (success) => {
+        toast({
+          title: "Welcome!",
+          description: `Logged in as ${success.username}`,
+        });
+          navigate("/select");
+      }, (error) => {
+          toast({
+              variant: "destructive",
+              title: error.title || "Login Failed",
+              description: error.reason,
+          });
+          setLoading(false); 
+      })
   };
 
   return (

@@ -1,13 +1,23 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { okAsync, errAsync, ResultAsync } from 'neverthrow'
 
 // Define the user roles based on your requirements
 type UserRole = 'admin' | 'free_trial' | 'regular' | null;
+
+interface LoginError {
+  reason: string;
+}
+
+interface LoginSuccess {
+  username: string;
+  role: UserRole;
+}
 
 interface AuthContextType {
   user: string | null;
   role: UserRole;
   token: string | null;
-  login: (username: string, url: string, pass: string, secret: string) => Promise<void>;
+  login: (username: string, url: string, pass: string, secret: string) => ResultAsync<LoginSuccess, LoginError>;
   logout: () => void;
   isLoading: boolean;
 }
@@ -19,16 +29,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<string | null>(localStorage.getItem('user'));
   const [role, setRole] = useState<UserRole>(localStorage.getItem('role') as UserRole);
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
-  const [baseUrl, setBaseUrl] = useState<string | null>(localStorage.getItem('backend_url'));
   const [isLoading, setIsLoading] = useState(false);
 
-  const login = async (username: string, url: string, pass: string, secret: string) => {
-    setIsLoading(true);
-    try {
-      // 1. Validate the URL format first
-      const cleanUrl = url.replace(/\/$/, "");
-      
-      const response = await fetch(`${cleanUrl}/auth/login`, {
+  const login = async (username: string, url: string, pass: string, secret: string): ResultAsync<LoginSuccess, LoginError> => {
+    setIsLoading(true); 
+    const cleanUrl = url.replace(/\/$/, "");
+    
+    return ResultAsync.fromPromise( 
+      fetch(`${cleanUrl}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -37,80 +45,54 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           secret,
           salt: import.meta.env.VITE_AUTH_SALT 
         }),
-      });
+      }),
+      (error) => ({ reason: `Network Erorr: ${(error as Error).message}` })
+    ).andThen((response) => {
+        // Specific error handling as requested
+        if (response.status === 404) return errAsync({ reason: "The backend link is wrong. Please try again..."});
+        
+        return ResultAsync.fromPromise(response.json(), () => ({ title: "Parsing Error" ,reason: "Failed to parse response..." }))
+          .andThen((data) => {
+            if (!response.ok) {
+              return errAsync({ reason: data.detail || 'Password or Secret is incorrect...' });
+            }
 
-      // Specific error handling as requested
-      if (response.status === 404) {
-        throw new Error("The backend link is wrong.");
-      }
+            // Success Logic
+            setToken(data.access_token);
+            setRole(data.role);
+            setUser(username);
 
-      const data = await response.json();
+            localStorage.setItem('token', data.access_token);
+            localStorage.setItem('role', data.role);
+            localStorage.setItem('user', username);
+            localStorage.setItem('backend_url', cleanUrl);
 
-      if (!response.ok) {
-        throw new Error(data.detail || "Password or Secret is incorrect.");
-      }
-
-      // Success: Set state and local storage
-      setToken(data.access_token);
-      setRole(data.role); // Role returned from FastAPI (admin, free_trial, regular)
-      setUser(username);
-      setBaseUrl(cleanUrl);
-
-      // PERSIST EVERYTHING TO LOCALSTORAGE
-      localStorage.setItem('token', data.access_token);
-      localStorage.setItem('role', data.role);
-      localStorage.setItem('user', username);
-      localStorage.setItem('backend_url', cleanUrl);
-      
-    } catch (error: any) {
-      throw error; // Re-throw to be caught by the Landing Page UI
-    } finally {
+            return okAsync({ username, role: data.role });
+          });
+    }).mapErr((err) => {
+      // Ensure loading is off on error
       setIsLoading(false);
-    }
+      return err;
+    }).map((val) => {
+      // Ensure loading is off on success
+      setIsLoading(false);
+      return val;
+    });
   };
 
   const logout = () => {
     setToken(null);
     setRole(null);
     setUser(null);
-    setBaseUrl(null);
     localStorage.removeItem('token');
   };
 
   return (
-    <AuthContext.Provider value={{ user, role, token, baseUrl, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, role, token, login, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );
 };
-
-export class BackendLinkError extends Error {
-  constructor(message: string = "The backend link cannot be reached!") {
-    super(message)
-    this.name = "BackendLinkError"
-  }
-}
-
-export class PasswordError extends Error {
-  constructor(message: string = "You have entered a wrong password!") {
-    super(message)
-    this.name = "PasswordError"
-  }
-}
-
-export class RoleInitializationError extends Error {
-  constructor(message: string = "The given secret is incorrect!") {
-    super(message)
-    this.name = "RoleInitializationError"
-  }
-}
-
-export class UnauthenticatedError extends Error {
-  constructor(message: string = "Unathenticated") {
-    super(message)
-    this.name = "UnathenticatedError"
-  }
-}
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
