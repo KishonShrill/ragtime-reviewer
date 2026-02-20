@@ -1,0 +1,16 @@
+[project]
+name = "server"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "argon2-cffi>=25.1.0",
+    "datetime>=6.0",
+    "dotenv>=0.9.9",
+    "fastapi>=0.129.0",
+    "pydantic>=2.12.5",
+    "pymongo>=4.16.0",
+    "pytz>=2025.2",
+    "uvicorn>=0.41.0",
+]
