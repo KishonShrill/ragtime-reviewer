@@ -6,9 +6,9 @@ from utils.db import check_health
 from dotenv import load_dotenv
 import pytz  # pip install pytz
 
-load_dotenv()
+_ = load_dotenv()
 
-app = FastAPI(title="Adaptive Quiz Generator API")
+app: FastAPI = FastAPI(title="Adaptive Quiz Generator API")
 
 # IMPORTANT: Enable CORS so your React app can talk to this server
 app.add_middleware(
@@ -44,12 +44,12 @@ def read_root() -> dict[str, str]:
     }
 
 @app.get("/api/health")
-def read_health():
+def read_health() -> dict[str, str | dict[str,str]]:
     mongo_health = {}
     if check_health():
         mongo_health = {"status": "MongoDB is healthy"}
     else:
-        mongo_health = {"status": "MongoDB is down"}, 500
+        mongo_health = {"status": "MongoDB is down"}
     return {
             "server": "Server is Online",
             "database": mongo_health,

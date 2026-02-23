@@ -1,9 +1,9 @@
 from fastapi import HTTPException, status
 from argon2 import PasswordHasher
-from argon2.exceptions import *
+from argon2.exceptions import VerifyMismatchError, UnsupportedParametersError
 
 
-hasher = PasswordHasher()
+hasher: PasswordHasher = PasswordHasher()
 # --- Helpers ---
 def hash_password(password: str) -> str:
     return hasher.hash(password)

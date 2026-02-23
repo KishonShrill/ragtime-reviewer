@@ -3,8 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 import os
 
-security = HTTPBearer()
-
+security: HTTPBearer = HTTPBearer()
 
 """
 --- CRUD ----
@@ -12,10 +11,10 @@ function operations for manipulating
 or reading tokens for the api routes
 """
 
-def create_access_token(payload: dict) -> str:
+def create_access_token(payload: dict[str,str]) -> str:
     return jwt.encode(payload, os.getenv("JWT_SECRET"), algorithm=os.getenv("JWT_ALGORITHM"))
 
-def read_access_token(payload: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+def read_access_token(payload: HTTPAuthorizationCredentials = Depends(security)) -> dict[str,str]:
     token = payload.credentials
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
@@ -34,7 +33,7 @@ role based system for the authorization
 on api routes for fastapi
 """
 
-def admin_required(user = Depends(read_access_token)) -> dict:
+def admin_required(user: dict[str,str] = Depends(read_access_token)) -> dict[str,str]:
     if user.get("role") != "admin":
         raise HTTPException(
             status_code=status.http_403_forbidden,
@@ -42,7 +41,7 @@ def admin_required(user = Depends(read_access_token)) -> dict:
         )
     return user
 
-def user_required(user = Depends(read_access_token)) -> dict:
+def user_required(user: dict[str,str] = Depends(read_access_token)) -> dict[str,str]:
     if user.get("role") != "regular":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

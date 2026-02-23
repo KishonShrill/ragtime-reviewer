@@ -1,31 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import BaseModel
 from utils.db import create_user, user_exists, verify_user 
-from utils.token import admin_required, create_access_token, read_access_token
+from utils.token import admin_required, create_access_token
+from utils.schema import SignupRequest, LoginRequest
 import os
 
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+router: APIRouter = APIRouter(prefix="/api/auth", tags=["auth"])
 
 # Mock DB (replace with MongoDB in production)
-USER_DB = {
+USER_DB: dict[str,str] = {
     "admin123": "admin",
     "regular123": "regular",
     "trial123": "free_trial"
 }
 
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-class SignupRequest(BaseModel):
-    username: str
-    password: str
-    secret: str
-
 @router.post("/signup")
-async def signup(request: SignupRequest): 
+async def signup(request: SignupRequest) -> str: 
     role = USER_DB.get(request.secret)
     if not role:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect Secret")
@@ -40,7 +30,7 @@ async def signup(request: SignupRequest):
     
     if (err != True):
         print(new_user)
-        token = create_access_token(new_user)
+        token: str = create_access_token(payload=new_user)
 
         return token
 

@@ -21,4 +21,11 @@ exclude = [
     "**/node_modules",
     "**/__pycache__",
 ]
+extraPaths = ["."]
+
 reportMissingImports = "error"
+reportUnknownMemberType = "warning"
+reportUntypedFunctionDecorator = "none"
+
+venv = ".venv"
+venvPath = "."
