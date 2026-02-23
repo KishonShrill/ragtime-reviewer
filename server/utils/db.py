@@ -1,10 +1,10 @@
+from fastapi import HTTPException, status
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
-from dotenv import load_dotenv
-from argon2 import PasswordHasher
+from utils.hashing import hash_password, verify_password
+from typing import Tuple, Optional, Dict
 import os
 
-load_dotenv()
 
 # MongoDB setup
 MONGO_URI = os.getenv("MONGO_URI")
@@ -14,7 +14,7 @@ knowledge_base = db.get_collection("KnowledgeBase")
 users = db.get_collection("Users")
 logs = db.get_collection("Logs")
 
-def check_health():
+def check_health() -> bool:
     """Returns True if MongoDB is reachable, False otherwise"""
     try:
         client.admin.command('ping')
@@ -30,18 +30,8 @@ Will recheck again if there's anything
 new to change.
 """
 
-hasher = PasswordHasher()
-# --- Helpers ---
-def hash_password(password: str) -> str:
-    return hasher.hash(password)
-
-def verify_password(password: str, hashed: str) -> bool:
-    return hasher.verify(password, hashed)
-
-
-
 # --- CRUD ---
-def create_user(username: str, password: str, role: str) -> dict:
+def create_user(username: str, password: str, role: str) -> Tuple[bool, Optional[Dict]]:
     """
     Inserts a new user into the collection and returns the created user (without password)
     """
@@ -51,11 +41,22 @@ def create_user(username: str, password: str, role: str) -> dict:
         "password": hashed_pw,
         "role": role
     }
-    new_user = users.insert_one(user_doc)
-    return new_user
+    try:
+        users.insert_one(user_doc)
+        return False, { "username": username, "role": role }
+    except Exception as e:
+        print("An exception occurred ::", e)
+        return True, None
+
 
 def user_exists(username: str) -> bool:
     user = users.find_one({ "username": username })
     if user:
         return True
     return False
+
+def verify_user(username: str, password: str) -> bool:
+    user = users.find_one({ "username": username })
+    if user:
+        return verify_password(user.get("password"), password)
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User Doesn't Exist")

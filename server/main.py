@@ -3,7 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from routers import auth
 from utils.db import check_health
+from dotenv import load_dotenv
 import pytz  # pip install pytz
+
+load_dotenv()
 
 app = FastAPI(title="Adaptive Quiz Generator API")
 
@@ -21,7 +24,7 @@ app.include_router(auth.router)
 # app.include_router(ai.router)
 
 @app.get("/")
-def read_root():
+def read_root() -> dict[str, str]:
     # UTC time
     utc_now = datetime.now(pytz.UTC)
     

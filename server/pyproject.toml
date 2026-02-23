@@ -7,10 +7,18 @@ requires-python = ">=3.13"
 dependencies = [
     "argon2-cffi>=25.1.0",
     "datetime>=6.0",
-    "dotenv>=0.9.9",
-    "fastapi>=0.129.0",
+    "fastapi[standard]>=0.129.0",
     "pydantic>=2.12.5",
+    "pyjwt>=2.11.0",
     "pymongo>=4.16.0",
+    "python-dotenv>=1.2.1",
     "pytz>=2025.2",
     "uvicorn>=0.41.0",
 ]
+
+[tool.basedpyright]
+exclude = [
+    "**/node_modules",
+    "**/__pycache__",
+]
+reportMissingImports = "error"

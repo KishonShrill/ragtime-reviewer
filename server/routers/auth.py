@@ -1,10 +1,10 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from dotenv import load_dotenv
-from utils.db import create_user, user_exists 
+from utils.db import create_user, user_exists, verify_user 
+from utils.token import admin_required, create_access_token, read_access_token
 import os
 
-load_dotenv()
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -18,7 +18,6 @@ USER_DB = {
 class LoginRequest(BaseModel):
     username: str
     password: str
-    salt: str
 
 class SignupRequest(BaseModel):
     username: str
@@ -37,16 +36,25 @@ async def signup(request: SignupRequest):
     if len(request.password.encode("utf-8")) > 72:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password too long (max 72 chars)")
 
-    new_user = create_user(request.username, request.password, role)
-    print(new_user)
-
-    return {
-        "access_token": f"mock_jwt_token_for_{request.username}",
-        "token_type": "bearer",
-        "user": new_user
-    }
-
-
-#@router.post("/login")
-#async def login(request: LoginRequest);
+    err, new_user = create_user(request.username, request.password, role)
     
+    if (err != True):
+        print(new_user)
+        token = create_access_token(new_user)
+
+        return token
+
+    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Something went wrong when saving the user...")
+
+@router.post("/login")
+async def login(request: LoginRequest):
+    if (verify_user(request.username, request.password)):
+        return "You are logged in"
+    return "You failed bitch"
+
+
+@router.get("/me")
+def me(user = Depends(admin_required)):
+    return user 
+
+
