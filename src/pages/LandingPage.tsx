@@ -68,7 +68,7 @@ const LandingPage = () => {
                         <div className="space-y-2">
                             <Label htmlFor="password">Password</Label>
                             <Input
-                                id="username"
+                                id="password"
                                 type="password"
                                 placeholder="User password"
                                 value={password}
@@ -99,7 +99,7 @@ const LandingPage = () => {
                         </div>
                         <Button type="submit" className="w-full gap-2" disabled={loading}>
                             <LogIn className="h-4 w-4" />
-                            {loading ? "Validating..." : "Sign In"}
+                            {loading ? "Validating..." : "Sign Up"}
                         </Button>
                         <p className="text-xs text-center text-muted-foreground mt-3">
                             Hint: URL is <code className="bg-muted px-1 rounded">https://api.quizapp.com</code>

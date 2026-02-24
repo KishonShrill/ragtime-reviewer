@@ -52,22 +52,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
             return ResultAsync.fromPromise(response.json(), () => ({ title: "Parsing Error", reason: "Failed to parse response..." }))
                 .andThen((data) => {
-                    if (response.status === 401) {
-                        return errAsync({ reason: data.detail || 'Password or Secret is incorrect...' });
-                    }
+                    console.log(JSON.stringify(data))
+                    console.log(response)
+
+                    if (response.ok === false) return errAsync({ title: data.detail.title, reason: data.detail.reason });
 
                     // Success Logic
-                    console.log(JSON.stringify(data))
                     setToken(data.access_token);
-                    setRole(data.user.role);
-                    setUser(data.user.username);
+                    setRole(data.role);
+                    setUser(data.username);
 
                     localStorage.setItem('token', data.access_token);
                     localStorage.setItem('role', data.role);
-                    localStorage.setItem('user', data.user.username);
+                    localStorage.setItem('user', data.username);
                     localStorage.setItem('backend_url', cleanUrl);
 
-                    return okAsync({ username: data.user.username, role: data.user.role });
+                    return okAsync({ username: data.username, role: data.role });
                 });
         }).mapErr((err) => {
             // Ensure loading is off on error
@@ -85,6 +85,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setRole(null);
         setUser(null);
         localStorage.removeItem('token');
+        localStorage.removeItem('role');
+        localStorage.removeItem('user');
     };
 
     return (
