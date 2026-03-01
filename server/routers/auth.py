@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from utils.db import create_user, user_exists, verify_user 
 from utils.token import admin_required, create_access_token
 from utils.schema import SignupRequest, LoginRequest
-from typing import Annotated
+from typing import cast, Annotated, Any
 import os
 
 
@@ -34,7 +34,7 @@ async def signup(request: SignupRequest) -> dict[str,str]:
     
     if (err != True):
         print(new_user)
-        token: str = create_access_token(payload=new_user)
+        token: str = create_access_token(payload=cast(dict[str,str], new_user))
 
         return {"username": request.username,
                 "role": role,
@@ -52,6 +52,7 @@ async def login(request: LoginRequest) -> str:
 
 @router.get("/me")
 def me(user: Annotated[dict[str,str], Depends(dependency=admin_required)]) -> dict[str,str]:
+
     return user 
 
 

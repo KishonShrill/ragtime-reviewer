@@ -1,10 +1,11 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Annotated, Any
+from typing import cast, Annotated
 import jwt
 import os
 
 security: HTTPBearer = HTTPBearer()
+
 
 """
 --- CRUD ----
@@ -13,7 +14,7 @@ or reading tokens for the api routes
 """
 
 def create_access_token(payload: dict[str,str]) -> str:
-    token: str | Any = jwt.encode(payload=payload, key=os.getenv("JWT_SECRET"), algorithm=os.getenv("JWT_ALGORITHM"))
+    token = jwt.encode(payload=payload, key=os.getenv("JWT_SECRET"), algorithm=os.getenv("JWT_ALGORITHM"))
     return token
 
 def read_access_token(payload: Annotated[HTTPAuthorizationCredentials, Depends(dependency=security)]) -> dict[str,str]:
@@ -23,7 +24,7 @@ def read_access_token(payload: Annotated[HTTPAuthorizationCredentials, Depends(d
                                                                               "reason": "Missing token"})
 
     try:
-        decoded_token: dict[str,str] = jwt.decode(jwt=token, key=os.getenv("JWT_SECRET"), algorithms=[os.getenv("JWT_ALGORITHM")])
+        decoded_token = jwt.decode(token, os.getenv("JWT_SECRET"), algorithms=[cast(str, os.getenv("JWT_ALGORITHM"))])
         return decoded_token
     except Exception as e:
         print(f"An exception has occured ::", e)
