@@ -4,11 +4,12 @@ import { okAsync, errAsync, ResultAsync } from 'neverthrow'
 // Define the user roles based on your requirements
 type UserRole = 'admin' | 'free_trial' | 'regular' | null;
 
-interface LoginError {
+interface AuthenticationError {
+    title: string;
     reason: string;
 }
 
-interface LoginSuccess {
+interface AuthenticationSuccess {
     username: string;
     role: UserRole;
 }
@@ -17,7 +18,8 @@ interface AuthContextType {
     user: string | null;
     role: UserRole;
     token: string | null;
-    login: (username: string, url: string, pass: string, secret: string) => ResultAsync<LoginSuccess, LoginError>;
+    login: (username: string, pass: string, url: string) => ResultAsync<AuthenticationSuccess, AuthenticationError>;
+    signup: (username: string, pass: string, url: string, secret: string) => ResultAsync<AuthenticationSuccess, AuthenticationError>;
     logout: () => void;
     isLoading: boolean;
 }
@@ -31,7 +33,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
     const [isLoading, setIsLoading] = useState(false);
 
-    const login = async (username: string, url: string, pass: string, secret: string): ResultAsync<LoginSuccess, LoginError> => {
+    const signup = (username: string, pass: string, url: string, secret: string): ResultAsync<AuthenticationSuccess, AuthenticationError> => {
         setIsLoading(true);
         const cleanUrl = url.replace(/\/$/, "");
 
@@ -45,30 +47,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     secret,
                 }),
             }),
-            (error) => ({ reason: `Network Erorr: ${(error)}` })
+            (error) => ({ title: "Unreachable Server", reason: `Network Error: ${(error)}` })
         ).andThen((response) => {
             // Specific error handling as requested
-            if (response.status === 404) return errAsync({ reason: "The backend link is wrong. Please try again..." });
+            if (response.status === 404) return errAsync({ title: "Uncreachable Server", reason: "The backend link is wrong. Please try again..." });
 
-            return ResultAsync.fromPromise(response.json(), () => ({ title: "Parsing Error", reason: "Failed to parse response..." }))
-                .andThen((data) => {
-                    console.log(JSON.stringify(data))
-                    console.log(response)
+            return ResultAsync.fromPromise(
+                response.json(),
+                () => ({ title: "Parsing Error", reason: "Failed to parse response..." })
+            ).andThen((data) => {
+                console.log(JSON.stringify(data))
+                console.log(response)
 
-                    if (response.ok === false) return errAsync({ title: data.detail.title, reason: data.detail.reason });
+                if (!response.ok) {
+                    return errAsync({
+                        title: data?.detail?.title || "Error",
+                        reason: data?.detail?.reason || "An unknown error occurred"
+                    });
+                }
 
-                    // Success Logic
-                    setToken(data.access_token);
-                    setRole(data.role);
-                    setUser(data.username);
+                // Success Logic
+                setToken(data.access_token);
+                setRole(data.role);
+                setUser(data.username);
 
-                    localStorage.setItem('token', data.access_token);
-                    localStorage.setItem('role', data.role);
-                    localStorage.setItem('user', data.username);
-                    localStorage.setItem('backend_url', cleanUrl);
+                localStorage.setItem('token', data.access_token);
+                localStorage.setItem('role', data.role);
+                localStorage.setItem('user', data.username);
+                localStorage.setItem('backend_url', cleanUrl);
 
-                    return okAsync({ username: data.username, role: data.role });
-                });
+                return okAsync({ username: data.username, role: data.role });
+            });
         }).mapErr((err) => {
             // Ensure loading is off on error
             setIsLoading(false);
@@ -80,6 +89,61 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         });
     };
 
+    const login = (username: string, pass: string, url: string): ResultAsync<AuthenticationSuccess, AuthenticationError> => {
+        setIsLoading(true);
+        const cleanUrl = url.replace(/\/$/, "");
+
+        return ResultAsync.fromPromise(
+            fetch(`${cleanUrl}/api/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username,
+                    password: pass,
+                }),
+            }),
+            (error) => ({ title: "Unreachable Server", reason: `Network Erorr: ${(error)}` })
+        ).andThen((response) => {
+            // Specific error handling as requested
+            if (response.status === 404) return errAsync({ title: "Uncreachable Server", reason: "The backend link is wrong. Please try again..." });
+
+            return ResultAsync.fromPromise(
+                response.json(),
+                () => ({ title: "Parsing Error", reason: "Failed to parse response..." })
+            ).andThen((data) => {
+                console.log(JSON.stringify(data))
+                console.log(response)
+
+                if (!response.ok) {
+                    return errAsync({
+                        title: data?.detail?.title || "Error",
+                        reason: data?.detail?.reason || "An unknown error occurred"
+                    });
+                }
+
+                // Success Logic
+                setToken(data.access_token);
+                setRole(data.role);
+                setUser(data.username);
+
+                localStorage.setItem('token', data.access_token);
+                localStorage.setItem('role', data.role);
+                localStorage.setItem('user', data.username);
+                localStorage.setItem('backend_url', cleanUrl);
+
+                return okAsync({ username: data.username, role: data.role });
+            });
+        }).mapErr((err) => {
+            // Ensure loading is off on error
+            setIsLoading(false);
+            return err;
+        }).map((val) => {
+            // Ensure loading is off on success
+            setIsLoading(false);
+            return val;
+        });
+    }
+
     const logout = () => {
         setToken(null);
         setRole(null);
@@ -90,7 +154,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, role, token, login, logout, isLoading }}>
+        <AuthContext.Provider value={{ user, role, token, login, signup, logout, isLoading }}>
             {children}
         </AuthContext.Provider>
     );

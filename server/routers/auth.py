@@ -47,7 +47,9 @@ async def signup(request: SignupRequest) -> dict[str,str]:
 async def login(request: LoginRequest) -> str:
     if (verify_user(request.username, request.password)):
         return "You are logged in"
-    return "You failed bitch"
+    else: 
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"title": "Login Error!", 
+                                                                          "reason": ""})
 
 
 @router.get("/me")

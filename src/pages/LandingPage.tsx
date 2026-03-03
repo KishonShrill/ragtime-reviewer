@@ -16,7 +16,7 @@ const LandingPage = () => {
     const [secret, setSecret] = useState("");
     const [loading, setLoading] = useState(false);
 
-    const { login } = useAuth();
+    const { login, signup } = useAuth();
     const navigate = useNavigate();
     const { toast } = useToast();
 
@@ -24,7 +24,13 @@ const LandingPage = () => {
         e.preventDefault();
         setLoading(true);
 
-        const res = await login(username, backendUrl, password, secret);
+        const authAction = isLogin
+            ? login(username, password, backendUrl) // Adjust arguments based on your API
+            : signup(username, password, backendUrl, secret);
+
+        // const res = await login(username, backendUrl, password, secret);
+        const res = await authAction;
+
         res.match(
             (success) => {
                 toast({
