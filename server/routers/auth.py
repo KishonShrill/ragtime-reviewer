@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from utils.db import create_user, user_exists, verify_user 
-from utils.token import admin_required, create_access_token
+from utils.token import user_required, create_access_token
 from utils.schema import SignupRequest, LoginRequest
-from typing import cast, Annotated, Any
+from typing import cast, Annotated, Mapping, Any
 import os
 
 
-router: APIRouter = APIRouter(prefix="/api/auth", tags=["auth"])
+router: APIRouter = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 # Mock DB (replace with MongoDB in production)
 USER_DB: dict[str | None,str] = {
@@ -14,6 +14,11 @@ USER_DB: dict[str | None,str] = {
     os.getenv("SECRET_REGULAR"): "regular",
     os.getenv("SECRET_TRIAL"): "free_trial"
 }
+
+
+@router.get("/me")
+def me(user: Annotated[dict[str,str], Depends(dependency=user_required)]) -> dict[str,str]:
+    return user 
 
 @router.post("/signup")
 async def signup(request: SignupRequest) -> dict[str,str]: 
@@ -44,17 +49,19 @@ async def signup(request: SignupRequest) -> dict[str,str]:
                                                                                    "reason": "Something went wrong when saving the user..."})
 
 @router.post("/login")
-async def login(request: LoginRequest) -> str:
-    if (verify_user(request.username, request.password)):
-        return "You are logged in"
-    else: 
+async def login(request: LoginRequest) -> dict[str, str | Any | None]:
+    try: 
+        user = verify_user(request.username, request.password)
+        username = user.get("username")
+        role = user.get("role")
+
+        old_user = {"username": username, "role": role}
+        token: str = create_access_token(payload=cast(dict[str,str], old_user))
+
+        return {"username": username,
+                "role": role,
+                "access_token": token}
+
+    except Exception as e: 
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"title": "Login Error!", 
-                                                                          "reason": ""})
-
-
-@router.get("/me")
-def me(user: Annotated[dict[str,str], Depends(dependency=admin_required)]) -> dict[str,str]:
-
-    return user 
-
-
+                                                                          "reason": e})

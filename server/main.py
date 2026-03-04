@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
-from routers import auth
+from routers import auth, ai
 from utils.db import check_health
 from dotenv import load_dotenv
 import pytz  # pip install pytz
@@ -9,6 +9,7 @@ import pytz  # pip install pytz
 _ = load_dotenv()
 
 app: FastAPI = FastAPI(title="Adaptive Quiz Generator API")
+
 
 # IMPORTANT: Enable CORS so your React app can talk to this server
 app.add_middleware(
@@ -18,10 +19,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Include routers
-app.include_router(auth.router)
-# app.include_router(ai.router)
 
 @app.get("/")
 def read_root() -> dict[str, str]:
@@ -55,6 +52,10 @@ def read_health() -> dict[str, str | dict[str,str]]:
             "database": mongo_health,
             "model": "Llama-3.1-8B-Instruct-4bit"
             }
+
+# Include routers
+app.include_router(auth.router)
+app.include_router(ai.router)
 
 if __name__ == "__main__":
     import uvicorn

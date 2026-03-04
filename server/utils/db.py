@@ -2,8 +2,8 @@ from fastapi import HTTPException, status
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from utils.hashing import hash_password, verify_password
-from .schema import User
-from typing import cast, Any
+from .schema import QuestionRequest, User
+from typing import cast, Any, Mapping, Optional
 import os
 
 
@@ -30,13 +30,17 @@ def user_exists(username: str) -> bool:
         return True
     return False
 
-def verify_user(username: str, password: str) -> bool:
+def verify_user(username: str, password: str) -> Mapping[str, Any]:
     user = users.find_one(filter={ "username": username })
-    if user:
-        return verify_password(hashed=cast(str, user.get("password")), password=password)
-    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"title": "Authorization Error",
-                                                                      "reason": "User Doesn't Exist"})
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_CONFLICT, detail={"title": "Authorization Error",
+                                                                          "reason": "User Doesn't Exist"})
+    hashed_pass = cast(str, user.get("password"))
 
+    if not verify_password(hashed=hashed_pass, password=password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"title": "Authentication Error",
+                                                                             "reason": "Password does not match"})
+    return user
 
 """
 Function call for util use on files
@@ -82,23 +86,50 @@ def create_user(username: str, password: str, role: str) -> tuple[bool, dict[str
         return True, None
 
 
-# def get_question(spec_dict: dict[str, str]) -> dict[str, str]:
-#     """
-#     Mock function to represent fetching/generating a question from MongoDB/LLM.
-#     """
-#     
-#     item = {
-#         "question_text": f"This is a mock {spec_dict['difficulty']} question about {spec_dict['subtopic']}.",
-#         "metadata": spec_dict,
-#         "options": ["A", "B", "C", "D"],
-#         "correct_answer": "A"
-#     }
-# 
-#     item = {
-#         "question": fetched_question,
-#         "answer": fetched_answer,
-#         "bloom_taxonomy": fetched_bloom_taxonomy,
-#         "difficulty": fetched_difficulty,
-#     }
-# 
-#     return item 
+def get_question(query_fields: QuestionRequest, excluded_ids: Optional[list[str]] = []) -> dict[str, str]:
+    try:
+        """
+        Mock function to represent fetching/generating a question from MongoDB/LLM.
+        """
+        pipeline = [
+            {
+                "$match": {
+                    "bloom_taxonomy": query_fields.bloom_taxonomy,
+                    "difficulty": query_fields.difficulty,
+                    "subtopic": query_fields.subtopic,
+
+                    "id": { "$nin": excluded_ids }
+                }
+            },
+            {
+                "$sample": { "size": 1 }
+            }
+        ]
+
+        result = list(knowledge_base.aggregate(pipeline))
+
+        return {"id": cast(str, result[0].get("id")),
+            "question": cast(str, result[0].get("question")),
+            "answer": cast(str, result[0].get("answer")),
+            "subtopic": cast(str, result[0].get("subtopic")),
+            "difficulty": cast(str, result[0].get("difficulty")),
+            "bloom_taxonomy": cast(str, result[0].get("bloom_taxonomy"))}
+    except:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
+                                                                                       "reason": "Can't connect to server, please try again..."})
+
+    # item = {
+    #     "question_text": f"This is a mock {spec_dict['difficulty']} question about {spec_dict['subtopic']}.",
+    #     "metadata": spec_dict,
+    #     "options": ["A", "B", "C", "D"],
+    #     "correct_answer": "A"
+    # }
+
+    # item = {
+    #     "question": fetched_question,
+    #     "answer": fetched_answer,
+    #     "bloom_taxonomy": fetched_bloom_taxonomy,
+    #     "difficulty": fetched_difficulty,
+    # }
+
+    # return item 

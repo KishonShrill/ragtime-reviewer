@@ -1,6 +1,6 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import cast, Annotated
+from typing import cast, Annotated, Any
 import jwt
 import os
 
@@ -13,7 +13,7 @@ function operations for manipulating
 or reading tokens for the api routes
 """
 
-def create_access_token(payload: dict[str,str]) -> str:
+def create_access_token(payload: dict[str,Any]) -> str:
     token = jwt.encode(payload=payload, key=os.getenv("JWT_SECRET"), algorithm=os.getenv("JWT_ALGORITHM"))
     return token
 

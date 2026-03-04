@@ -19,10 +19,18 @@ class User(BaseModel):
 
 
 # Data Models
-class DebugQuestionRequest(BaseModel):
+class QuestionRequest(BaseModel):
     subtopic: str
     difficulty: str
     bloom_taxonomy: str
+
+class QuestionResponse(BaseModel):
+    id: str
+    question: str
+    answer: str
+    bloom_taxonomy: str
+    difficulty: str
+    subtopic: str
 
 class QuestionLog(BaseModel):
     original: str
