@@ -5,6 +5,7 @@ import jwt
 import os
 
 security: HTTPBearer = HTTPBearer()
+ALLOWED_ROLES = ["regular", "admin"]
 
 
 """
@@ -48,7 +49,7 @@ def admin_required(user: Annotated[dict[str,str], Depends(dependency=read_access
     return user
 
 def user_required(user: Annotated[dict[str,str], Depends(dependency=read_access_token)]) -> dict[str,str]:
-    if user.get("role") != "regular":
+    if user.get("role") not in ALLOWED_ROLES:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"title": "Authorization Error",

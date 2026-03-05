@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
-from routers import auth, ai
+from routers import auth, ai, db
 from utils.db import check_health
 from dotenv import load_dotenv
 import pytz  # pip install pytz
@@ -56,6 +56,7 @@ def read_health() -> dict[str, str | dict[str,str]]:
 # Include routers
 app.include_router(auth.router)
 app.include_router(ai.router)
+app.include_router(db.router)
 
 if __name__ == "__main__":
     import uvicorn

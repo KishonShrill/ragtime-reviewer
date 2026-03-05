@@ -6,28 +6,29 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import LandingPage from "./pages/LandingPage";
 import SelectionPage from "./pages/SelectionPage";
-//import QuizPage from "./pages/QuizPage";
+import QuizPage from "./pages/QuizPage";
 import NotFoundPage from "./pages/NotFoundPage";
+import QuizPage from "./pages/QuizPage";
 
 const queryClient = new QueryClient();
-// <Route path="/quiz" element={<QuizPage />} />
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/select" element={<SelectionPage />} />
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </AuthProvider>
-  </QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+            <TooltipProvider>
+                <Toaster />
+                <Sonner />
+                <BrowserRouter>
+                    <Routes>
+                        <Route path="/" element={<LandingPage />} />
+                        <Route path="/select" element={<SelectionPage />} />
+                        <Route path="/quiz" element={<QuizPage />} />
+                        <Route path="*" element={<NotFoundPage />} />
+                    </Routes>
+                </BrowserRouter>
+            </TooltipProvider>
+        </AuthProvider>
+    </QueryClientProvider>
 );
 
 export default App;

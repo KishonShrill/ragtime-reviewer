@@ -21,7 +21,7 @@ def me(user: Annotated[dict[str,str], Depends(dependency=user_required)]) -> dic
     return user 
 
 @router.post("/signup")
-async def signup(request: SignupRequest) -> dict[str,str]: 
+async def signup(request: SignupRequest) -> dict[str,Any]: 
     role = USER_DB.get(request.secret)
     if not role:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail={"title": "SignUp Error!", 
@@ -43,23 +43,26 @@ async def signup(request: SignupRequest) -> dict[str,str]:
 
         return {"username": request.username,
                 "role": role,
+                "knowledge_scores": new_user.get("knowledge_scores"),
                 "access_token": token}
 
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "Server Error", 
                                                                                    "reason": "Something went wrong when saving the user..."})
 
 @router.post("/login")
-async def login(request: LoginRequest) -> dict[str, str | Any | None]:
+async def login(request: LoginRequest) -> dict[str, Any]:
     try: 
         user = verify_user(request.username, request.password)
         username = user.get("username")
         role = user.get("role")
+        knowledge_scores = user.get("knowledge_scores")
 
         old_user = {"username": username, "role": role}
         token: str = create_access_token(payload=cast(dict[str,str], old_user))
 
         return {"username": username,
                 "role": role,
+                "knowledge_scores": knowledge_scores,
                 "access_token": token}
 
     except Exception as e: 

@@ -25,42 +25,42 @@
 #     profile["last_bloom_level"] = scaffold_bloom
 # 
 #     return profile
-# 
-# 
-# def prepare_next_question(profile_dict: dict[str, any]) -> dict[str, any]:
-#     """
-#     Determines the difficulty and Bloom's level for the next question 
-#     based on the learner's knowledge state vector.
-#     """
-#     score: float = profile_dict.get("mastery_score", 0.0)
-#     
-#     # Rank 1: Novice (Score < 0.4) - Focuses on building foundation[cite: 521].
-#     if score < 0.4:
-#         difficulty: str = "Easy"
-#         bloom: str = random.choices(
-#             population=["Remembering", "Understanding", "Applying"], 
-#             weights=[80, 20, 0] # 80% Remembering, 20% Understanding[cite: 522, 523, 555].
-#         )[0]
-#         
-#     # Rank 2: Competent (Score 0.4-0.7) - Focuses on strengthening comprehension[cite: 527].
-#     elif score <= 0.7:
-#         difficulty: str = "Medium"
-#         bloom: str = random.choices(
-#             population=["Remembering", "Understanding", "Applying"], 
-#             weights=[20, 60, 20] # 20% Remembering, 60% Understanding, 20% Applying[cite: 528, 529, 530].
-#         )[0]
-#         
-#     # Rank 3: Expert (Score > 0.7) - Focuses on mastery and application[cite: 531].
-#     else:
-#         difficulty: str = "Hard"
-#         bloom: str = random.choices(
-#             population=["Remembering", "Understanding", "Applying"], 
-#             weights=[10, 20, 70] # 10% Remembering, 20% Understanding, 70% Applying[cite: 532, 533, 534].
-#         )[0]
-#         
-#     return {
-#         "subtopic": profile_dict.get("subtopic"),
-#         "difficulty": difficulty,
-#         "bloom_level": bloom
-#     }
+
+
+def prepare_next_question(profile_dict: dict[str, any]) -> dict[str, any]:
+    """
+    Determines the difficulty and Bloom's level for the next question 
+    based on the learner's knowledge state vector.
+    """
+    score: float = profile_dict.get("mastery_score", 0.0)
+    
+    # Rank 1: Novice (Score < 0.4) - Focuses on building foundation[cite: 521].
+    if score < 0.4:
+        difficulty: str = "Easy"
+        bloom: str = random.choices(
+            population=["Remembering", "Understanding", "Applying"], 
+            weights=[80, 20, 0] # 80% Remembering, 20% Understanding[cite: 522, 523, 555].
+        )[0]
+        
+    # Rank 2: Competent (Score 0.4-0.7) - Focuses on strengthening comprehension[cite: 527].
+    elif score <= 0.7:
+        difficulty: str = "Medium"
+        bloom: str = random.choices(
+            population=["Remembering", "Understanding", "Applying"], 
+            weights=[20, 60, 20] # 20% Remembering, 60% Understanding, 20% Applying[cite: 528, 529, 530].
+        )[0]
+        
+    # Rank 3: Expert (Score > 0.7) - Focuses on mastery and application[cite: 531].
+    else:
+        difficulty: str = "Hard"
+        bloom: str = random.choices(
+            population=["Remembering", "Understanding", "Applying"], 
+            weights=[10, 20, 70] # 10% Remembering, 20% Understanding, 70% Applying[cite: 532, 533, 534].
+        )[0]
+        
+    return {
+        "subtopic": profile_dict.get("subtopic"),
+        "difficulty": difficulty,
+        "bloom_level": bloom
+    }
 

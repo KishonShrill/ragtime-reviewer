@@ -49,7 +49,7 @@ new to change.
 """
 
 # --- CRUD ---
-def create_user(username: str, password: str, role: str) -> tuple[bool, dict[str, str] | None]:
+def create_user(username: str, password: str, role: str) -> tuple[bool, dict[str, Any] | None]:
     """
     Inserts a new user into the collection with a Cold Start adaptive profile 
     and returns the created user data (excluding the password).
@@ -80,7 +80,7 @@ def create_user(username: str, password: str, role: str) -> tuple[bool, dict[str
     try:
         print(f"Inserting User: {user_doc}")
         _ = users.insert_one(document=user_doc)
-        return False, { "username": username, "role": role }
+        return False, { "username": username, "role": role, "knowledge_scores": initial_knowledge_scores }
     except Exception as e:
         print("An exception occurred ::", e)
         return True, None

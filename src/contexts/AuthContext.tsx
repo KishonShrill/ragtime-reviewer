@@ -1,64 +1,67 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { okAsync, errAsync, ResultAsync } from 'neverthrow'
+import { createContext, useContext, useState } from 'react';
+import { okAsync, errAsync, ResultAsync } from 'neverthrow';
 
-// Define the user roles based on your requirements
-type UserRole = 'admin' | 'free_trial' | 'regular' | null;
+import type { ReactNode } from 'react';
+import type { Subtopic } from '@/types/knowledge_score';
+import type {
+    UserRole,
+    AuthContextType,
+    AuthResponseData,
+    AuthenticationError,
+    AuthenticationSuccess
+} from '@/types/authentication';
 
-interface AuthenticationError {
-    title: string;
-    reason: string;
-}
-
-interface AuthenticationSuccess {
-    username: string;
-    role: UserRole;
-}
-
-interface AuthContextType {
-    user: string | null;
-    role: UserRole;
-    token: string | null;
-    login: (username: string, pass: string, url: string) => ResultAsync<AuthenticationSuccess, AuthenticationError>;
-    signup: (username: string, pass: string, url: string, secret: string) => ResultAsync<AuthenticationSuccess, AuthenticationError>;
-    logout: () => void;
-    isLoading: boolean;
-}
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-    // Initialize from localStorage so data survives a refresh
     const [user, setUser] = useState<string | null>(localStorage.getItem('user'));
     const [role, setRole] = useState<UserRole>(localStorage.getItem('role') as UserRole);
     const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+    const [backendUrl, setBackendUrl] = useState<string | null>(localStorage.getItem('backend_url'));
+    const [knowledgeScores, setKnowledgeScores] = useState<Subtopic>(JSON.parse(localStorage.getItem('knowledge_scores') ?? '{}') as Subtopic);
     const [isLoading, setIsLoading] = useState(false);
 
-    const signup = (username: string, pass: string, url: string, secret: string): ResultAsync<AuthenticationSuccess, AuthenticationError> => {
+    function initializeSetup(data: AuthResponseData, url: string) {
+        setToken(data.access_token);
+        setRole(data.role);
+        setUser(data.username);
+        setBackendUrl(url);
+        setKnowledgeScores(data.knowledge_scores)
+
+        localStorage.setItem('token', data.access_token);
+        localStorage.setItem('role', data.role ?? '');
+        localStorage.setItem('user', data.username);
+        localStorage.setItem('backend_url', url);
+        localStorage.setItem('knowledge_scores', JSON.stringify(data.knowledge_scores));
+    }
+
+    /**
+     * Shared logic for all Auth POST requests
+     */
+    const executeAuth = (
+        endpoint: string,
+        body: object,
+        url: string
+    ): ResultAsync<AuthenticationSuccess, AuthenticationError> => {
         setIsLoading(true);
         const cleanUrl = url.replace(/\/$/, "");
 
         return ResultAsync.fromPromise(
-            fetch(`${cleanUrl}/api/auth/signup`, {
+            fetch(`${cleanUrl}${endpoint}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    username,
-                    password: pass,
-                    secret,
-                }),
+                body: JSON.stringify(body),
             }),
-            (error) => ({ title: "Unreachable Server", reason: `Network Error: ${(error)}` })
+            (error) => ({ title: "Unreachable Server", reason: `Network Error: ${String(error)}` })
         ).andThen((response) => {
-            // Specific error handling as requested
-            if (response.status === 404) return errAsync({ title: "Uncreachable Server", reason: "The backend link is wrong. Please try again..." });
+            if (response.status === 404)
+                return errAsync({ title: "Unreachable Server", reason: "The backend link is wrong." });
 
             return ResultAsync.fromPromise(
                 response.json(),
                 () => ({ title: "Parsing Error", reason: "Failed to parse response..." })
             ).andThen((data) => {
-                console.log(JSON.stringify(data))
-                console.log(response)
-
                 if (!response.ok) {
                     return errAsync({
                         title: data?.detail?.title || "Error",
@@ -66,16 +69,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     });
                 }
 
-                // Success Logic
-                setToken(data.access_token);
-                setRole(data.role);
-                setUser(data.username);
-
-                localStorage.setItem('token', data.access_token);
-                localStorage.setItem('role', data.role);
-                localStorage.setItem('user', data.username);
-                localStorage.setItem('backend_url', cleanUrl);
-
+                initializeSetup(data as AuthResponseData, cleanUrl);
                 return okAsync({ username: data.username, role: data.role });
             });
         }).mapErr((err) => {
@@ -89,72 +83,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         });
     };
 
-    const login = (username: string, pass: string, url: string): ResultAsync<AuthenticationSuccess, AuthenticationError> => {
-        setIsLoading(true);
-        const cleanUrl = url.replace(/\/$/, "");
+    const signup = (username: string, pass: string, url: string, secret: string) =>
+        executeAuth('/api/auth/signup', { username, password: pass, secret }, url);
 
-        return ResultAsync.fromPromise(
-            fetch(`${cleanUrl}/api/auth/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    username,
-                    password: pass,
-                }),
-            }),
-            (error) => ({ title: "Unreachable Server", reason: `Network Erorr: ${(error)}` })
-        ).andThen((response) => {
-            // Specific error handling as requested
-            if (response.status === 404) return errAsync({ title: "Uncreachable Server", reason: "The backend link is wrong. Please try again..." });
-
-            return ResultAsync.fromPromise(
-                response.json(),
-                () => ({ title: "Parsing Error", reason: "Failed to parse response..." })
-            ).andThen((data) => {
-                console.log(JSON.stringify(data))
-                console.log(response)
-
-                if (!response.ok) {
-                    return errAsync({
-                        title: data?.detail?.title || "Error",
-                        reason: data?.detail?.reason || "An unknown error occurred"
-                    });
-                }
-
-                // Success Logic
-                setToken(data.access_token);
-                setRole(data.role);
-                setUser(data.username);
-
-                localStorage.setItem('token', data.access_token);
-                localStorage.setItem('role', data.role);
-                localStorage.setItem('user', data.username);
-                localStorage.setItem('backend_url', cleanUrl);
-
-                return okAsync({ username: data.username, role: data.role });
-            });
-        }).mapErr((err) => {
-            // Ensure loading is off on error
-            setIsLoading(false);
-            return err;
-        }).map((val) => {
-            // Ensure loading is off on success
-            setIsLoading(false);
-            return val;
-        });
-    }
+    const login = (username: string, pass: string, url: string) =>
+        executeAuth('/api/auth/login', { username, password: pass }, url);
 
     const logout = () => {
         setToken(null);
-        setRole(null);
+        setRole('');
         setUser(null);
+        setBackendUrl(null);
+        setKnowledgeScores(JSON.parse('{}'))
         localStorage.removeItem('token');
         localStorage.removeItem('role');
         localStorage.removeItem('user');
+        localStorage.removeItem('backend_url');
+        localStorage.removeItem('knowledge_scores');
     };
 
     return (
-        <AuthContext.Provider value={{ user, role, token, login, signup, logout, isLoading }}>
+        <AuthContext.Provider value={{ user, role, token, login, signup, logout, knowledgeScores, backendUrl, isLoading }}>
             {children}
         </AuthContext.Provider>
     );
