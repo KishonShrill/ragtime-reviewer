@@ -1,8 +1,9 @@
 from fastapi import HTTPException, status
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
+from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 from utils.hashing import hash_password, verify_password
-from .schema import QuestionRequest, User
+from .schema import LogicEngineResponse, SubtopicKnowledgeScore, Subtopics, QuestionResponse, User
 from typing import cast, Any, Mapping, Optional
 import os
 
@@ -33,7 +34,7 @@ def user_exists(username: str) -> bool:
 def verify_user(username: str, password: str) -> Mapping[str, Any]:
     user = users.find_one(filter={ "username": username })
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_CONFLICT, detail={"title": "Authorization Error",
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"title": "Authorization Error",
                                                                           "reason": "User Doesn't Exist"})
     hashed_pass = cast(str, user.get("password"))
 
@@ -49,7 +50,7 @@ new to change.
 """
 
 # --- CRUD ---
-def create_user(username: str, password: str, role: str) -> tuple[bool, dict[str, Any] | None]:
+def create_user(username: str, password: str, role: str) -> tuple[bool, User]:
     """
     Inserts a new user into the collection with a Cold Start adaptive profile 
     and returns the created user data (excluding the password).
@@ -57,20 +58,24 @@ def create_user(username: str, password: str, role: str) -> tuple[bool, dict[str
     hashed_pw = hash_password(password)
     
     # Initialize the Cold Start profile for the 4 core Science subjects
-    initial_knowledge_scores: dict[str, dict[str, str | float | list[str]]] = {
-        subject: {
-            "mastery_score": 0.5, 
-            "rank": "Medium",  # Cold start baseline
-            "weak_concepts": []
-        }
+    initial_scores_model = {
+        subject: SubtopicKnowledgeScore(
+                mastery_score = 0.5, 
+                rank = "Medium",  # Cold start baseline
+                weak_concepts = []
+        )
         for subject in ["Biology", "Chemistry", "Physics", "General Science"]
+    }
+
+    initial_scores_dict = {
+        sub: model.model_dump() for sub, model in initial_scores_model.items()
     }
 
     user_doc: dict[str, Any] = {
         "username": username,
         "password": hashed_pw,
         "role": role,
-        "knowledge_scores": initial_knowledge_scores,
+        "knowledge_scores": initial_scores_dict,
         "overall_progress": {
             "total_questions_answered": 0,
             "average_accuracy": 0.0,
@@ -80,13 +85,13 @@ def create_user(username: str, password: str, role: str) -> tuple[bool, dict[str
     try:
         print(f"Inserting User: {user_doc}")
         _ = users.insert_one(document=user_doc)
-        return False, { "username": username, "role": role, "knowledge_scores": initial_knowledge_scores }
+        return False, User(username=username, role=role, knowledge_scores=Subtopics(subtopic=initial_scores_model), access_token="")
     except Exception as e:
         print("An exception occurred ::", e)
-        return True, None
+        return True, User(username='', role='', knowledge_scores=Subtopics(subtopic={}), access_token='')
 
 
-def get_question(query_fields: QuestionRequest, excluded_ids: Optional[list[str]] = []) -> dict[str, str]:
+def get_question(query_fields: LogicEngineResponse, excluded_ids: Optional[list[str]] = []) -> QuestionResponse:
     try:
         """
         Mock function to represent fetching/generating a question from MongoDB/LLM.
@@ -107,29 +112,20 @@ def get_question(query_fields: QuestionRequest, excluded_ids: Optional[list[str]
         ]
 
         result = list(knowledge_base.aggregate(pipeline))
+        raw_data: QuestionResponse = result[0]
 
-        return {"id": cast(str, result[0].get("id")),
-            "question": cast(str, result[0].get("question")),
-            "answer": cast(str, result[0].get("answer")),
-            "subtopic": cast(str, result[0].get("subtopic")),
-            "difficulty": cast(str, result[0].get("difficulty")),
-            "bloom_taxonomy": cast(str, result[0].get("bloom_taxonomy"))}
-    except:
+        return QuestionResponse(
+            question_id = raw_data.get("question_id"),
+            question = raw_data.get("question"),
+            answer = raw_data.get("answer"),
+            subtopic = raw_data.get("subtopic"),
+            difficulty = raw_data.get("difficulty"),
+            bloom_taxonomy = raw_data.get("bloom_taxonomy")
+        )
+    except IndexError:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Error",
+                                                                                       "reason": "Query not found"})
+    except Exception as e:
+        print(e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
                                                                                        "reason": "Can't connect to server, please try again..."})
-
-    # item = {
-    #     "question_text": f"This is a mock {spec_dict['difficulty']} question about {spec_dict['subtopic']}.",
-    #     "metadata": spec_dict,
-    #     "options": ["A", "B", "C", "D"],
-    #     "correct_answer": "A"
-    # }
-
-    # item = {
-    #     "question": fetched_question,
-    #     "answer": fetched_answer,
-    #     "bloom_taxonomy": fetched_bloom_taxonomy,
-    #     "difficulty": fetched_difficulty,
-    # }
-
-    # return item 

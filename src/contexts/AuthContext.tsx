@@ -102,8 +102,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         localStorage.removeItem('knowledge_scores');
     };
 
+    const updateKnowledgeScores = (data: Subtopic) => {
+        setKnowledgeScores(data)
+    }
+
     return (
-        <AuthContext.Provider value={{ user, role, token, login, signup, logout, knowledgeScores, backendUrl, isLoading }}>
+        <AuthContext.Provider value={{
+            user,
+            role,
+            token,
+            login,
+            signup,
+            logout,
+            knowledgeScores,
+            updateKnowledgeScores,
+            backendUrl,
+            isLoading
+        }}>
             {children}
         </AuthContext.Provider>
     );

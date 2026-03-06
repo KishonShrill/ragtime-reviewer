@@ -8,7 +8,6 @@ import LandingPage from "./pages/LandingPage";
 import SelectionPage from "./pages/SelectionPage";
 import QuizPage from "./pages/QuizPage";
 import NotFoundPage from "./pages/NotFoundPage";
-import QuizPage from "./pages/QuizPage";
 
 const queryClient = new QueryClient();
 

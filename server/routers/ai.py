@@ -1,17 +1,19 @@
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
-from utils.schema import QuestionRequest
+from utils.schema import QuestionRequest, LogicEngineResponse
 from utils.db import get_question
+from utils.engine import prepare_next_question
 
 router: APIRouter = APIRouter(prefix="/api/ai", tags=["Large Language Model"])
 
 
 @router.post("/debug/question")
 async def debug_get_question(request: QuestionRequest):
-    return get_question(request)
+    result: LogicEngineResponse = prepare_next_question(request)
+    return get_question(query_fields=result)
 
 @router.post("/question")
-async def get_rag_question(request: QuestionRequest) -> dict[str,str]:
+async def get_rag_question(request: LogicEngineResponse) -> dict[str,str]:
     fetched_item = get_question(request)
 
     prompt = {

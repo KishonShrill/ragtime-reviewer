@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from utils.db import create_user, user_exists, verify_user 
 from utils.token import user_required, create_access_token
-from utils.schema import SignupRequest, LoginRequest
+from utils.schema import SignupRequest, LoginRequest, User, Subtopics
 from typing import cast, Annotated, Mapping, Any
 import os
 
@@ -21,7 +21,7 @@ def me(user: Annotated[dict[str,str], Depends(dependency=user_required)]) -> dic
     return user 
 
 @router.post("/signup")
-async def signup(request: SignupRequest) -> dict[str,Any]: 
+async def signup(request: SignupRequest) -> User: 
     role = USER_DB.get(request.secret)
     if not role:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail={"title": "SignUp Error!", 
@@ -39,32 +39,42 @@ async def signup(request: SignupRequest) -> dict[str,Any]:
     
     if (err != True):
         print(new_user)
-        token: str = create_access_token(payload=cast(dict[str,str], new_user))
+        token: str = create_access_token(payload=new_user)
 
-        return {"username": request.username,
-                "role": role,
-                "knowledge_scores": new_user.get("knowledge_scores"),
-                "access_token": token}
+        return User(
+            username = request.username,
+            role = role,
+            knowledge_scores = new_user.knowledge_scores,
+            access_token = token
+        )
 
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "Server Error", 
                                                                                    "reason": "Something went wrong when saving the user..."})
 
 @router.post("/login")
-async def login(request: LoginRequest) -> dict[str, Any]:
+async def login(request: LoginRequest) -> User:
+    user = verify_user(request.username, request.password)
+    username: str = user.get("username")
+    role: str = user.get("role")
+    knowledge_scores: dict[str, Any]  = user.get("knowledge_scores")
+
     try: 
-        user = verify_user(request.username, request.password)
-        username = user.get("username")
-        role = user.get("role")
-        knowledge_scores = user.get("knowledge_scores")
+        old_user = User( 
+            username=username, 
+            role=role, 
+            knowledge_scores=Subtopics(subtopic=knowledge_scores),
+            access_token=''
+        )
+        token: str = create_access_token(payload=old_user)
 
-        old_user = {"username": username, "role": role}
-        token: str = create_access_token(payload=cast(dict[str,str], old_user))
+        return User(
+            username=username,
+            role=role,
+            knowledge_scores=Subtopics(subtopic=knowledge_scores),
+            access_token=token
+        )
 
-        return {"username": username,
-                "role": role,
-                "knowledge_scores": knowledge_scores,
-                "access_token": token}
-
-    except Exception as e: 
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"title": "Login Error!", 
-                                                                          "reason": e})
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "Login Error!", 
+                                                                                       "reason": "Something went wrong when logging in..."})

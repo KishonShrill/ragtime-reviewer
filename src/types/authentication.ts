@@ -27,6 +27,7 @@ export interface AuthContextType {
     token: string | null;
     backendUrl: string | null;
     knowledgeScores: Subtopic | null;
+    updateKnowledgeScores: (data: Subtopic) => void;
     login: (username: string, pass: string, url: string) => ResultAsync<AuthenticationSuccess, AuthenticationError>;
     signup: (username: string, pass: string, url: string, secret: string) => ResultAsync<AuthenticationSuccess, AuthenticationError>;
     logout: () => void;

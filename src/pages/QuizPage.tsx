@@ -6,15 +6,19 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, XCircle, ArrowLeft, Trophy } from "lucide-react";
+import { ResultAsync, errAsync, okAsync } from "neverthrow";
 
 const QuizPage = () => {
-    const { token, backendUrl } = useAuth();
+    const { token, backendUrl, knowledgeScores } = useAuth();
     const navigate = useNavigate();
     const { toast } = useToast();
 
+    const [showFallback, setShowFallback] = useState(false);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [selected, setSelected] = useState<number | null>(null);
     const [showResult, setShowResult] = useState(false);
+    const [question, setQuestion] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
     const [score, setScore] = useState(0);
     const [finished, setFinished] = useState(false);
 
@@ -24,15 +28,72 @@ const QuizPage = () => {
 
     if (!token) return null;
 
-    const question: QuizQuestion = mockQuizData[currentIndex];
-    const progress = ((currentIndex) / mockQuizData.length) * 100;
+    // const question: QuizQuestion = mockQuizData[currentIndex];
+    const progress = ((currentIndex) / 50) * 100;
+
+    const fetchQuestion = () => {
+        console.log(JSON.stringify({ scores: knowledgeScores, subject: "Chemistry" }))
+
+        return ResultAsync.fromPromise(
+            fetch(`${backendUrl}/api/ai/debug/question`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    scores: knowledgeScores,
+                    subject: "Chemistr"
+                }),
+            }),
+            (error) => ({ title: "Unreachable Server", reason: `Network Error: ${String(error)}` })
+        ).andThen((response) => {
+            if (response.status === 404)
+                return errAsync({ title: "Unreachable Server", reason: "The backend link is wrong." });
+
+            return ResultAsync.fromPromise(
+                response.json(),
+                () => ({ title: "Parsing Error", reason: "Failed to parse response..." })
+            ).andThen((data) => {
+                if (!response.ok) {
+                    return errAsync({
+                        title: data?.detail?.title || "Error",
+                        reason: data?.detail?.reason || "An unknown error occurred"
+                    });
+                }
+
+                // initializeSetup(data as AuthResponseData, cleanUrl);
+                console.log(data)
+                return okAsync(data);
+            });
+        }).mapErr((err) => {
+            // Ensure loading is off on error
+            return err;
+        }).map((val) => {
+            // Ensure loading is off on success
+            return val;
+        });
+    }
+
+    const loadNewQuestion = async () => {
+        setIsLoading(true);
+
+        const result = await fetchQuestion();
+        result.match(
+            (data) => {
+                setQuestion(data);
+                setIsLoading(false);
+            },
+            (err) => {
+                toast({ variant: "destructive", title: err.title, description: err.reason });
+                setIsLoading(false);
+            }
+        );
+    };
 
     const handleAnswer = (index: number) => {
         if (showResult) return;
         setSelected(index);
         setShowResult(true);
 
-        const isCorrect = index === question.correctIndex;
+        const isCorrect = question.options[index] === question.answer;
 
         if (isCorrect) {
             setScore((s) => s + 1);
@@ -59,16 +120,60 @@ const QuizPage = () => {
         }
 
         setTimeout(() => {
-            if (currentIndex + 1 < mockQuizData.length) {
+            if (currentIndex + 1 < 50) {
                 setCurrentIndex((i) => i + 1);
                 setSelected(null);
                 setShowResult(false);
+                loadNewQuestion();
             } else {
                 setFinished(true);
             }
         }, 1500);
     };
 
+    useEffect(() => {
+        if (token) loadNewQuestion();
+    }, [token]);
+
+    useEffect(() => {
+        let timer: number; // Browser setTimeout returns a number ID
+        if (isLoading || !question) {
+            timer = window.setTimeout(() => {
+                setShowFallback(true);
+            }, 1000);
+        }
+
+        return () => clearTimeout(timer);
+    }, [isLoading, question]);
+
+    if (isLoading || !question) {
+        const handleGoBack = () => {
+            navigate(token ? "/select" : "/");
+        };
+
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-background">
+                <div className="flex flex-col items-center gap-6 text-center">
+                    <div className="animate-pulse text-xl font-medium text-muted-foreground">
+                        Loading your next challenge...
+                    </div>
+
+                    {/* Conditional Rendering based on the 15s timer */}
+                    {showFallback && (
+                        <div className="flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <p className="text-sm text-destructive max-w-[300px]">
+                                This is taking longer than usual. Check your backend connection or try again.
+                            </p>
+                            <Button onClick={handleGoBack} variant="default" className="gap-2">
+                                <ArrowLeft className="h-4 w-4" />
+                                Go Back
+                            </Button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
     if (finished) {
         return (
             <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -81,18 +186,18 @@ const QuizPage = () => {
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <p className="text-4xl font-bold text-primary">
-                            {score} / {mockQuizData.length}
+                            {score} / 50
                         </p>
                         <p className="text-muted-foreground">
-                            {score === mockQuizData.length
+                            {score === 50
                                 ? "Perfect score! 🎉"
-                                : score >= mockQuizData.length / 2
+                                : score >= 50 / 2
                                     ? "Good effort! Keep learning."
                                     : "Keep practicing, you'll improve!"}
                         </p>
                         <p className="text-muted-foreground text-sm italic">
                             Results have been synchronized with the server at: <br />
-                            <span className="text-xs font-mono opacity-70">{baseUrl}</span>
+                            <span className="text-xs font-mono opacity-70">{backendUrl}</span>
                         </p>
                         <div className="flex gap-3 justify-center pt-2">
                             <Button variant="outline" onClick={() => navigate("/select")} className="gap-2">
@@ -120,12 +225,12 @@ const QuizPage = () => {
         <div className="flex min-h-screen items-center justify-center bg-background p-4">
             <Card className="w-full max-w-2xl shadow-xl border-border/50 overflow-hidden">
                 <div className="bg-muted/30 p-2 text-center text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border/40">
-                    Connected to: {baseUrl}
+                    Connected to: {backendUrl}
                 </div>
                 <CardHeader className="space-y-3">
                     <div className="flex items-center justify-between text-sm text-muted-foreground">
                         <span>
-                            Question {currentIndex + 1} of {mockQuizData.length}
+                            Question {currentIndex + 1} of {50}
                         </span>
                         <span className="font-semibold text-primary">Score: {score}</span>
                     </div>

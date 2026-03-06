@@ -1,5 +1,7 @@
 from datetime import date
+from typing import TypedDict
 from pydantic import BaseModel
+from dataclasses import dataclass
 
 
 # Website Requests
@@ -12,20 +14,14 @@ class SignupRequest(BaseModel):
     password: str
     secret: str
 
-class User(BaseModel):
-    username: str
-    password: str
-    role: str
-
-
 # Data Models
-class QuestionRequest(BaseModel):
+class LogicEngineResponse(BaseModel):
     subtopic: str
     difficulty: str
     bloom_taxonomy: str
 
-class QuestionResponse(BaseModel):
-    id: str
+class QuestionResponse(TypedDict):
+    question_id: str
     question: str
     answer: str
     bloom_taxonomy: str
@@ -51,10 +47,19 @@ class SubtopicKnowledgeScore(BaseModel):
     rank: str # difficulty
     weak_concepts: list[str]
 
-class Subtopic(BaseModel):
+class Subtopics(BaseModel):
     subtopic: dict[str, SubtopicKnowledgeScore]
+
+class QuestionRequest(BaseModel):
+    scores: dict[str, SubtopicKnowledgeScore]
+    subject: str
 
 class LearnerProfile(BaseModel):
     username: str
-    knowledge_scores: Subtopic
+    knowledge_scores: Subtopics
 
+class User(BaseModel):
+    username: str
+    role: str
+    knowledge_scores: Subtopics
+    access_token: str
