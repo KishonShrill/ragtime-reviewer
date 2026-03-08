@@ -120,7 +120,8 @@ def get_question(query_fields: LogicEngineResponse, excluded_ids: Optional[list[
             answer = raw_data.get("answer"),
             subtopic = raw_data.get("subtopic"),
             difficulty = raw_data.get("difficulty"),
-            bloom_taxonomy = raw_data.get("bloom_taxonomy")
+            bloom_taxonomy = raw_data.get("bloom_taxonomy"),
+            image=raw_data.get("image")
         )
     except IndexError:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Error",

@@ -1,5 +1,5 @@
 from datetime import date
-from typing import TypedDict
+from typing import TypedDict, Optional
 from pydantic import BaseModel
 from dataclasses import dataclass
 
@@ -27,6 +27,7 @@ class QuestionResponse(TypedDict):
     bloom_taxonomy: str
     difficulty: str
     subtopic: str
+    image: Optional[str] # Add this line! Allows a string or None.
 
 class QuestionLog(BaseModel):
     original: str
