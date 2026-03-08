@@ -16,11 +16,11 @@ function operations for manipulating
 or reading tokens for the api routes
 """
 
-def create_access_token(payload) -> str:
+def create_access_token(payload: User) -> str:
     json_compatible_payload = {
         "username": payload.username,
         "role": payload.role,
-        "knowledge_scores": payload.knowledge_scores
+        "knowledge_scores": payload.knowledge_scores.model_dump()
     }
     token = jwt.encode(payload=json_compatible_payload, key=os.getenv("JWT_SECRET"), algorithm=os.getenv("JWT_ALGORITHM"))
     return token
