@@ -9,3 +9,7 @@ export interface Subtopic {
     // Key is the name of the subtopic (e.g., "Photosynthesis")
     [subtopicName: string]: SubtopicKnowledgeScore;
 }
+
+export interface KnowledgeScores {
+    subtopic: Subtopic;
+}

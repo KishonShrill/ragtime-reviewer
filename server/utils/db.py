@@ -64,7 +64,7 @@ def create_user(username: str, email: str, password: str, role: str) -> tuple[bo
     # Initialize the Cold Start profile for the 4 core Science subjects
     initial_scores_model = {
         subject: SubtopicKnowledgeScore(
-                mastery_score = 0.5, 
+                mastery_score = 0.41, 
                 rank = "Medium",  # Cold start baseline
                 weak_concepts = []
         )

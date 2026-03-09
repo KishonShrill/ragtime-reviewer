@@ -26,37 +26,97 @@ This project leverages **Retrieval-Augmented Generation (RAG)** and a **MongoDB*
 
 ## 📂 Project Structure
 ```text
-src/
-├── components/   # shadcn/ui and custom reusable UI components
-├── context/      # AuthContext handling JWT, role, and URL persistence
-├── hooks/        # Custom React hooks (e.g., useToast)
-├── pages/        # Landing, Selection, Quiz, and 404 pages
-└── lib/          # Global types and utility functions
+adaptive-quiz-system/
+├── src/
+│   ├── components/       # shadcn/ui and custom reusable UI components
+│   ├── context/          # AuthContext handling JWT, role, and URL persistence
+│   ├── hooks/            # Custom React hooks (e.g., useToast)
+│   ├── pages/            # Landing, Selection, Quiz, and 404 pages
+│   └── lib/              # Global types and utility functions
+├── backend/
+│   ├── app/              # FastAPI application routers and logic
+│   ├── pyproject.toml    # uv dependency management
+│   └── requirements.txt  # Exported python requirements
+└── README.md
 ```
 
 ## ⚙️ Configuration & Setup
-**Environment Variables**
-Create a `.env` file in the root directory:
-```text
-VITE_AUTH_SALT=your_secure_salt_here
+Clone the repository to get started:
+```bash
+git clone https://github.com/KishonShrill/ragtime-reviewer.git
+cd ragtime-reviewer
 ```
 
-**Installation**
-```bash
-# Using Bun (Recommended)
-bun install
+### 1. AI Serving (Ollama)
+The system requires Ollama to server the LLM locally
+    1. Install [Ollama](https://ollama.com/)
+    2. Pull the required Llama 3.1 models for testing and inference:
+    ```bash
+    ollama pull llama3.1:8b
+    ollama pull llama3.1:8b-instruct-q2_K
+    ollama pull llama3.1:8b-instruct-q4_K_M
+    ```
 
-# Using NPM
+### 2. Secure Tunneling (Cloudflared)To expose your local FastAPI backend securely, install Cloudflared.
+To expose your local FastAPI backend securely, install Cloudflared.
+**System Dependencies required for Cloudflared:**
+- [GNU Make](https://www.gnu.org/software/make/) 
+- [capnp](https://capnproto.org/install.html)
+- [go >= 1.24](https://go.dev/doc/install)
+
+Once dependencies are met, install and make a Cloudflared tunnel:
+```bash
+cloudflared --url <the-running-server-url> # This will be seen later
+```
+
+### 3. Backend Configuration (FastAPI & uv)
+The backend uses [uv for lightning-fast Python](https://docs.astral.sh/uv/) dependency management.
+
+Navigate to the backend directory and set up the environment:
+```bash
+cd server
+```
+
+#### UV Tools
+```bash
+uv run python -V                # To check for python version of UV
+uv python pin <python-version>  # To change the python version of UV
+uv python list                  # To see all python versions for download
+```
+
+#### Installing from `pyproject.toml`
+```bash
+uv sync
+
+# (Optional) Standard pip installation:
+pip install -r requirements.txt
+```
+
+#### Exporting or Freezing Dependencies
+```bash
+# Export from pyproject.toml / uv.lock
+uv pip compile pyproject.toml -o requirements.txt
+
+# Freeze current environment
+uv pip freeze > requirements.txt
+```
+
+#### Run the backend server:
+```bash
+# Ensure you are inside server folder
+uv run fastapi run main.py [--reload] # reload is optional
+```
+
+### 4. Frontend Configuration (React & npm)
+Navigate to the root directory then install the dependencies.
+```bash
 npm install
-```
-
-**Running the Application**
-```bash
-# Using Bun (Recommended)
-bun dev
-
-# Using NPM
 npm run dev
+
+# or
+
+npm run build
+npm run preview
 ```
 
 ## 📝 Ongoing Thesis Research
