@@ -1,7 +1,6 @@
 from datetime import date
 from typing import TypedDict, Optional
 from pydantic import BaseModel
-from dataclasses import dataclass
 
 
 # Website Requests
@@ -11,6 +10,7 @@ class LoginRequest(BaseModel):
 
 class SignupRequest(BaseModel):
     username: str
+    email: str
     password: str
     secret: str
 
@@ -52,8 +52,10 @@ class Subtopics(BaseModel):
     subtopic: dict[str, SubtopicKnowledgeScore]
 
 class QuestionRequest(BaseModel):
-    scores: dict[str, SubtopicKnowledgeScore]
+    scores: Optional[dict[str, SubtopicKnowledgeScore]] = None
     subject: str
+    is_trial: bool = False
+    difficulty: Optional[str] = None
 
 class LearnerProfile(BaseModel):
     username: str
@@ -61,6 +63,7 @@ class LearnerProfile(BaseModel):
 
 class User(BaseModel):
     username: str
+    email: str
     role: str
     knowledge_scores: Subtopics
     access_token: str

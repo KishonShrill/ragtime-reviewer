@@ -14,7 +14,7 @@ def verify_password(hashed: str, password: str) -> bool:
         return is_verified
     except VerifyMismatchError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"title": "Login Error!",
-                                                                             "reason":"Password does not match"})
+                                                                             "reason":"Username or Password is incorrect"})
     except UnsupportedParametersError: 
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"title": "Browser Error!",
                                                                              "reason":"Current platform does not support the parameters"})

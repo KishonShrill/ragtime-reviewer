@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,9 +9,16 @@ import { CheckCircle2, XCircle, ArrowLeft, Trophy } from "lucide-react";
 import { ResultAsync, errAsync, okAsync } from "neverthrow";
 
 const QuizPage = () => {
-    const { token, backendUrl, knowledgeScores } = useAuth();
+    const { token, backendUrl, knowledgeScores, role } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const { toast } = useToast();
+
+    const [searchParams] = useSearchParams();
+    const mode = searchParams.get("mode")
+    const trialDifficulty = searchParams.get("difficulty");
+    const trialSubject = searchParams.get("subject");
+    const isTrial = mode === "trial";
 
     const [showFallback, setShowFallback] = useState(false);
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -21,27 +28,64 @@ const QuizPage = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [score, setScore] = useState(0);
     const [finished, setFinished] = useState(false);
+    const TOTAL_QUESTIONS = isTrial ? 1 : 50;
 
     useEffect(() => {
-        if (!token) navigate("/");
-    }, [token, navigate]);
+        if (!token) {
+            navigate("/");
+            return;
+        }
 
-    if (!token) return null;
+        // If they didn't click the start button (state is null/undefined)
+        if (!location.state?.started) {
+            toast({
+                variant: "destructive",
+                title: "Unaccessible",
+                description: "Please start the quiz on selection page",
+            });
+            // Use replace: true so they don't get stuck in a back-button loop
+            navigate("/select", { replace: true });
+        }
+    }, [token, navigate, location]);
+    if (!token || !location.state?.started) return null;
+
+    useEffect(() => {
+        if (token) loadNewQuestion();
+    }, [token]);
+
+    useEffect(() => {
+        let timer: number; // Browser setTimeout returns a number ID
+        if (isLoading || !question) {
+            timer = window.setTimeout(() => {
+                setShowFallback(true);
+            }, 5000);
+        }
+
+        return () => clearTimeout(timer);
+    }, [isLoading, question]);
 
     // const question: QuizQuestion = mockQuizData[currentIndex];
-    const progress = ((currentIndex) / 50) * 100;
+    const progress = ((currentIndex) / TOTAL_QUESTIONS) * 100;
 
     const fetchQuestion = () => {
         console.log(JSON.stringify({ scores: knowledgeScores, subject: "Chemistry" }))
 
+        const requestPayload = isTrial
+            ? {
+                subject: trialSubject,
+                difficulty: trialDifficulty,
+                is_trial: true
+            }
+            : {
+                scores: knowledgeScores.subtopic,
+                subject: "Chemistry" // Or wherever you plan to get the normal subject from!
+            };
+
         return ResultAsync.fromPromise(
-            fetch(`${backendUrl}/api/ai/debug/question`, {
+            fetch(`${backendUrl}/api/ai/question`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    scores: knowledgeScores,
-                    subject: "Chemistr"
-                }),
+                body: JSON.stringify(requestPayload),
             }),
             (error) => ({ title: "Unreachable Server", reason: `Network Error: ${String(error)}` })
         ).andThen((response) => {
@@ -61,7 +105,21 @@ const QuizPage = () => {
 
                 // initializeSetup(data as AuthResponseData, cleanUrl);
                 console.log(data)
-                return okAsync(data);
+
+                // 1. Extract the actual generated question data
+                const aiQuestion = data.result.response;
+
+                // 2. Attach the image from the original seed query
+                aiQuestion.image = data.queries.image;
+
+                // 3. Check for the mock fallback error and pass it to the component
+                if (data.result.error) {
+                    aiQuestion.isMock = true;
+                    aiQuestion.mockMessage = data.result.error;
+                }
+
+                console.log(aiQuestion)
+                return okAsync(aiQuestion);
             });
         }).mapErr((err) => {
             // Ensure loading is off on error
@@ -80,6 +138,15 @@ const QuizPage = () => {
             (data) => {
                 setQuestion(data);
                 setIsLoading(false);
+
+                // Warn the user if they are receiving the mock fallback
+                if (data.isMock) {
+                    toast({
+                        variant: "destructive",
+                        title: "Offline Mode",
+                        description: data.mockMessage,
+                    });
+                }
             },
             (err) => {
                 toast({ variant: "destructive", title: err.title, description: err.reason });
@@ -115,12 +182,12 @@ const QuizPage = () => {
             toast({
                 variant: "destructive",
                 title: "❌ Wrong!",
-                description: `The correct answer was: ${question.answers[question.correctIndex]}`,
+                description: `The correct answer was: ${question.answer}}`,
             });
         }
 
         setTimeout(() => {
-            if (currentIndex + 1 < 50) {
+            if (currentIndex + 1 < TOTAL_QUESTIONS) {
                 setCurrentIndex((i) => i + 1);
                 setSelected(null);
                 setShowResult(false);
@@ -130,21 +197,6 @@ const QuizPage = () => {
             }
         }, 1500);
     };
-
-    useEffect(() => {
-        if (token) loadNewQuestion();
-    }, [token]);
-
-    useEffect(() => {
-        let timer: number; // Browser setTimeout returns a number ID
-        if (isLoading || !question) {
-            timer = window.setTimeout(() => {
-                setShowFallback(true);
-            }, 1000);
-        }
-
-        return () => clearTimeout(timer);
-    }, [isLoading, question]);
 
     if (isLoading || !question) {
         const handleGoBack = () => {
@@ -186,12 +238,12 @@ const QuizPage = () => {
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <p className="text-4xl font-bold text-primary">
-                            {score} / 50
+                            {score} / {TOTAL_QUESTIONS}
                         </p>
                         <p className="text-muted-foreground">
-                            {score === 50
+                            {score === TOTAL_QUESTIONS
                                 ? "Perfect score! 🎉"
-                                : score >= 50 / 2
+                                : score >= TOTAL_QUESTIONS / 2
                                     ? "Good effort! Keep learning."
                                     : "Keep practicing, you'll improve!"}
                         </p>
@@ -203,17 +255,19 @@ const QuizPage = () => {
                             <Button variant="outline" onClick={() => navigate("/select")} className="gap-2">
                                 <ArrowLeft className="h-4 w-4" /> Back
                             </Button>
-                            <Button
-                                onClick={() => {
-                                    setCurrentIndex(0);
-                                    setScore(0);
-                                    setSelected(null);
-                                    setShowResult(false);
-                                    setFinished(false);
-                                }}
-                            >
-                                Retry Quiz
-                            </Button>
+                            {!isTrial &&
+                                <Button
+                                    onClick={() => {
+                                        setCurrentIndex(0);
+                                        setScore(0);
+                                        setSelected(null);
+                                        setShowResult(false);
+                                        setFinished(false);
+                                    }}
+                                >
+                                    Retry Quiz
+                                </Button>
+                            }
                         </div>
                     </CardContent>
                 </Card>
@@ -230,7 +284,7 @@ const QuizPage = () => {
                 <CardHeader className="space-y-3">
                     <div className="flex items-center justify-between text-sm text-muted-foreground">
                         <span>
-                            Question {currentIndex + 1} of {50}
+                            Question {currentIndex + 1} of {TOTAL_QUESTIONS}
                         </span>
                         <span className="font-semibold text-primary">Score: {score}</span>
                     </div>
@@ -249,12 +303,14 @@ const QuizPage = () => {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-1 gap-3">
-                        {question.answers.map((answer, i) => {
+                        {question.options.map((option, i) => {
                             let variant: "outline" | "default" | "destructive" | "secondary" = "outline";
                             let icon = null;
 
                             if (showResult) {
-                                if (i === question.correctIndex) {
+                                const correctIndex = question.options.indexOf(question.answer);
+
+                                if (i === correctIndex) {
                                     variant = "default";
                                     icon = <CheckCircle2 className="h-4 w-4" />;
                                 } else if (i === selected) {
@@ -274,7 +330,7 @@ const QuizPage = () => {
                                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-current/20 text-sm font-semibold">
                                         {String.fromCharCode(65 + i)}
                                     </span>
-                                    {answer}
+                                    {option}
                                     {icon && <span className="ml-auto">{icon}</span>}
                                 </Button>
                             );

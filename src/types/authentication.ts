@@ -29,7 +29,7 @@ export interface AuthContextType {
     knowledgeScores: Subtopic | null;
     updateKnowledgeScores: (data: Subtopic) => void;
     login: (username: string, pass: string, url: string) => ResultAsync<AuthenticationSuccess, AuthenticationError>;
-    signup: (username: string, pass: string, url: string, secret: string) => ResultAsync<AuthenticationSuccess, AuthenticationError>;
+    signup: (username: string, email: string, pass: string, url: string, secret: string) => ResultAsync<AuthenticationSuccess, AuthenticationError>;
     logout: () => void;
     isLoading: boolean;
 }

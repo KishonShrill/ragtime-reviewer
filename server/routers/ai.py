@@ -13,12 +13,14 @@ router: APIRouter = APIRouter(prefix="/api/ai", tags=["Large Language Model"])
 
 @router.post("/debug/question")
 async def debug_get_question(request: QuestionRequest):
+    print(request)
     result: LogicEngineResponse = prepare_next_question(request)
+    print(f"Q_Request: {result}")
     return get_question(query_fields=result)
 
 @router.post("/question")
 async def get_rag_question(request: QuestionRequest) -> dict[str, Any]:
-    
+    print(request) 
     query: LogicEngineResponse = prepare_next_question(request)
     fetched_item: QuestionResponse = get_question(query)
     
@@ -66,26 +68,53 @@ async def get_rag_question(request: QuestionRequest) -> dict[str, Any]:
     ]
 
     start_time = time.perf_counter()
-    response = await AsyncClient().chat(
-        model='llama3.1:8b', 
-        messages=messages,
-        format='json'
-    )
-    end_time = time.perf_counter()
-
     try:
-        clean_result = json.loads(response.message.content)
-        options = clean_result.get("options", [])
+        response = await AsyncClient().chat(
+            model='llama3.1:8b', 
+            messages=messages,
+            format='json'
+        )
+        end_time = time.perf_counter()
 
-        # Shuffle them in place
-        random.shuffle(options)
-
-        # Put them back
-        clean_result["options"] = options
+        # Parse the real response
+        clean_result = {"error": False, "response": json.loads(response.message.content)}
 
     except json.JSONDecodeError:
+        clean_result = {"error": "Inalid Json Returned", "response": response.message.content}
+
+    except Exception as e:
+        # 2. OLLAMA FALLBACK: Runs if the server is offline or fails
+        print(f"⚠️ Ollama Generation Failed: {e}. Falling back to mock data.")
+        end_time = time.perf_counter()
+        
+        # Build a safe mock using the actual MongoDB seed data
+        clean_result = {
+            "error": "Offline mode for debugging!", # Flag this as an error/fallback for the frontend
+            "response": {
+                "question": f"[MOCK] {fetched_item.get('question')} (Please pretend this is rewritten!)",
+                "options": [
+                    fetched_item.get('answer'),
+                    "Generated Distractor A",
+                    "Generated Distractor B",
+                    "Generated Distractor C"
+                ],
+                "answer": fetched_item.get('answer'),
+                "bloom_taxonomy": fetched_item.get('bloom_taxonomy'),
+                "difficulty": fetched_item.get('difficulty'),
+                "subtopic": fetched_item.get('subtopic')
+            }
+        }
+
+    try:
+        response_dict = clean_result.get("response", {})
+        options = response_dict.get("options", [])
+        if isinstance(options, list):
+            random.shuffle(options)
+            clean_result["response"]["options"] = options
+
+    except Exception as e:
         # Fallback if for some reason it's not valid JSON
-        clean_result = {"error": "Invalid JSON returned", "raw": response.message.content}
+        clean_result = {"error": "Failed to shuffle options", "response": str(e)}
 
     generation_time = end_time - start_time
 

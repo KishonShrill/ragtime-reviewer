@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -9,16 +9,29 @@ import { Label } from "@/components/ui/label";
 import { Brain, LogIn, UserPlus } from "lucide-react";
 
 const LandingPage = () => {
-    const [isLogin, setIsLogin] = useState(true);
-    const [username, setUsername] = useState("");
-    const [backendUrl, setBackendUrl] = useState("");
-    const [password, setPassword] = useState("");
-    const [secret, setSecret] = useState("");
-    const [loading, setLoading] = useState(false);
+    const [isLogin, setIsLogin] = useState<boolean>(true);
+    const [username, setUsername] = useState<string>("");
+    const [email, setEmail] = useState<string>("")
+    const [backendUrl, setBackendUrl] = useState<string>("");
+    const [password, setPassword] = useState<string>("");
+    const [secret, setSecret] = useState<string>("");
+    const [loading, setLoading] = useState<boolean>(false);
 
-    const { login, signup } = useAuth();
+    const { login, signup, token, user } = useAuth();
     const navigate = useNavigate();
     const { toast } = useToast();
+
+    useEffect(() => {
+        if (token) {
+            toast({
+                title: "Welcome back!",
+                description: `Logged in as ${user}`,
+            });
+            navigate("/select");
+        }
+
+    }, [token, navigate]);
+    if (token) return null;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -26,9 +39,8 @@ const LandingPage = () => {
 
         const authAction = isLogin
             ? login(username, password, backendUrl) // Adjust arguments based on your API
-            : signup(username, password, backendUrl, secret);
+            : signup(username, email, password, backendUrl, secret);
 
-        // const res = await login(username, backendUrl, password, secret);
         const res = await authAction;
 
         res.match(
@@ -71,12 +83,27 @@ const LandingPage = () => {
                             <Label htmlFor="username">Username</Label>
                             <Input
                                 id="username"
+                                type="text"
                                 placeholder="johndoe"
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
                                 required
                             />
                         </div>
+
+                        {!isLogin && (
+                            <div className="space-y-2">
+                                <Label htmlFor="email">Email</Label>
+                                <Input
+                                    id="email"
+                                    type="email"
+                                    placeholder="example@yahoo.com"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    required
+                                />
+                            </div>
+                        )}
 
                         <div className="space-y-2">
                             <Label htmlFor="password">Password</Label>
@@ -116,7 +143,7 @@ const LandingPage = () => {
                             </div>
                         )}
 
-                        <Button type="submit" className="w-full gap-2 mt-2" disabled={loading}>
+                        <Button type="submit" className="w-full gap-2 mt-2 cursor-pointer" disabled={loading}>
                             {isLogin ? <LogIn className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
                             {loading ? "Processing..." : (isLogin ? "Login" : "Sign Up")}
                         </Button>
@@ -132,7 +159,7 @@ const LandingPage = () => {
                         <button
                             type="button"
                             onClick={() => setIsLogin(!isLogin)}
-                            className="text-primary font-medium hover:underline underline-offset-4"
+                            className="text-primary font-medium hover:underline underline-offset-4 cursor-pointer"
                         >
                             {isLogin ? "Sign up" : "Login"}
                         </button>

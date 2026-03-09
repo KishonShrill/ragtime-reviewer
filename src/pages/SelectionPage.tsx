@@ -27,21 +27,68 @@ const SelectionPage = () => {
     useEffect(() => {
         if (!token) navigate("/");
     }, [token, navigate]);
+    if (!token) return null;
 
     const canStartQuiz = role === "admin" || role === "regular";
-    const canFreeTrial = role === "admin" || role === "free_trial";
-    const canAccessFilters = role === "admin"; // Admin only can use the bottom 3 dropdowns
+    const canFreeTrial = role === "admin" || role === "regular" || role === "free_trial";
+    const canAccessFilters = canFreeTrial; // Admin only can use the bottom 3 dropdowns
 
     const handleStartQuiz = () => {
         if (!canStartQuiz) return;
         toast({ title: "Starting Quiz!", description: "Loading your customized questions..." });
-        navigate("/quiz");
+        navigate("/quiz", {
+            state: { started: true },
+        });
     };
 
     const handleFreeTrial = () => {
         if (!canFreeTrial) return;
-        toast({ title: "Free Trial", description: "Entering trial mode..." });
-        navigate("/quiz?mode=trial");
+
+        // 1. Figure out which difficulty and subject the user picked
+        let selectedDifficulty = "";
+        let selectedSubject = "";
+
+        if (easy) {
+            selectedDifficulty = "Easy";
+            selectedSubject = easy;
+        } else if (medium) {
+            selectedDifficulty = "Medium";
+            selectedSubject = medium;
+        } else if (hard) {
+            selectedDifficulty = "Hard";
+            selectedSubject = hard;
+        }
+
+        // Optional: Stop the user if they didn't pick anything
+        if (!selectedSubject) {
+            toast({
+                title: "Selection Required",
+                description: "Please select a subject and difficulty for the trial.",
+                variant: "destructive"
+            });
+            return;
+        }
+
+        toast({
+            title: "Free Trial",
+            description: `Loading ${selectedDifficulty} ${selectedSubject} questions...`
+        });
+
+        // 2. Build the dynamic URL query string safely
+        const queryParams = new URLSearchParams({
+            mode: "trial",
+            difficulty: selectedDifficulty,
+            subject: selectedSubject
+        }).toString();
+
+        // Result looks like: /quiz?mode=trial&difficulty=easy&subject=chemistry
+        navigate(`/quiz?${queryParams}`, {
+            state: {
+                started: true,
+                difficulty: selectedDifficulty,
+                subject: selectedSubject
+            },
+        });
     };
 
     const handleLogout = () => {
@@ -93,26 +140,54 @@ const SelectionPage = () => {
                     </div>
 
                     {/* Difficulty Dropdowns - Locked for non-admins */}
+                    {/* Difficulty Dropdowns - Locked for non-admins */}
                     <div className={`grid grid-cols-3 gap-3 transition-opacity ${!canAccessFilters ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
                         {[
-                            { label: "Easy", value: easy, onChange: setEasy },
-                            { label: "Medium", value: medium, onChange: setMedium },
-                            { label: "Hard", value: hard, onChange: setHard },
+                            {
+                                label: "Easy",
+                                value: easy,
+                                onChange: (val: string) => {
+                                    setEasy(val === "null" ? "" : val);
+                                    setMedium("");
+                                    setHard("");
+                                }
+                            },
+                            {
+                                label: "Medium",
+                                value: medium,
+                                onChange: (val: string) => {
+                                    setMedium(val === "null" ? "" : val);
+                                    setEasy("");
+                                    setHard("");
+                                }
+                            },
+                            {
+                                label: "Hard",
+                                value: hard,
+                                onChange: (val: string) => {
+                                    setHard(val === "null" ? "" : val);
+                                    setEasy("");
+                                    setMedium("");
+                                }
+                            },
                         ].map(({ label, value, onChange }) => (
                             <div key={label} className="space-y-2">
+                                {/* ... rest of your label mapping remains exactly the same ... */}
                                 <div className="flex items-center gap-1">
                                     <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                                         {label}
                                     </Label>
                                     {!canAccessFilters && <Lock className="h-2.5 w-2.5 text-muted-foreground" />}
                                 </div>
+
                                 <Select value={value} onValueChange={onChange} disabled={!canAccessFilters}>
                                     <SelectTrigger className="h-9">
                                         <SelectValue placeholder="Subject" />
                                     </SelectTrigger>
                                     <SelectContent>
+                                        <SelectItem key="Subject" value="null">Subject</SelectItem>
                                         {subjects.map((s) => (
-                                            <SelectItem key={s} value={s.toLowerCase()}>
+                                            <SelectItem key={s} value={s}>
                                                 {s}
                                             </SelectItem>
                                         ))}
@@ -122,11 +197,6 @@ const SelectionPage = () => {
                         ))}
                     </div>
 
-                    {!canAccessFilters && (
-                        <p className="text-center text-xs text-muted-foreground italic">
-                            Difficulty selection is restricted to Admin accounts.
-                        </p>
-                    )}
                 </CardContent>
             </Card>
         </div>
