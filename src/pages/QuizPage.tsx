@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,41 +7,127 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, XCircle, ArrowLeft, Trophy } from "lucide-react";
 import { ResultAsync, errAsync, okAsync } from "neverthrow";
+import type { Question } from "@/types/question";
+
+
+const SCORING_MATRIX = {
+    "correct": {
+        Remembering: { Easy: 0.04, Medium: 0.05, Hard: 0.06 },
+        Understanding: { Easy: 0.06, Medium: 0.08, Hard: 0.10 },
+        Applying: { Easy: 0.00, Medium: 0.12, Hard: 0.15 } // Easy is 0.00 as a fallback
+    },
+    "incorrect": {
+        Remembering: { Easy: 0.08, Medium: 0.07, Hard: 0.06 },
+        Understanding: { Easy: 0.07, Medium: 0.06, Hard: 0.05 },
+        Applying: { Easy: 0.00, Medium: 0.05, Hard: 0.03 } // Easy is 0.00 as a fallback
+    }
+};
+
+function calculateNewMasteryScore(currentScore: number, isCorrect: boolean, bloomLevel: string, difficulty: string) {
+    // 1. Determine if we are looking at the reward or penalty matrix
+    const resultType: string = isCorrect ? "correct" : "incorrect";
+
+    // 2. Fetch the exact modifier. (The '?.' safely handles any weird unexpected inputs)
+    const delta: number = SCORING_MATRIX[resultType][bloomLevel]?.[difficulty] || 0.0;
+
+    // 3. Apply the math
+    let newScore = isCorrect ? currentScore + delta : currentScore - delta;
+
+    // 4. Bound the score between 0.0 and 1.0
+    newScore = Math.max(0.0, Math.min(1.0, newScore));
+
+    // 5. Clean up JavaScript floating point errors (e.g., returns 0.62 instead of 0.6200000001)
+    return Math.round(newScore * 100) / 100;
+};
 
 const QuizPage = () => {
     const { token, backendUrl, knowledgeScores } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const { toast } = useToast();
+
+    const [searchParams] = useSearchParams();
+    const mode = searchParams.get("mode")
+    const trialDifficulty = searchParams.get("difficulty");
+    const trialSubject = searchParams.get("subject");
+    const isTrial = mode === "trial";
 
     const [showFallback, setShowFallback] = useState(false);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [selected, setSelected] = useState<number | null>(null);
     const [showResult, setShowResult] = useState(false);
-    const [question, setQuestion] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [score, setScore] = useState(0);
     const [finished, setFinished] = useState(false);
+    const TOTAL_QUESTIONS = isTrial ? 1 : 10;
+    const [question, setQuestion] = useState<Question>({
+        question: "",
+        options: [],
+        answer: "",
+        bloom_taxonomy: "",
+        difficulty: "",
+        subtopic: "",
+        image: null,
+        isMock: null,
+        mockMessage: null
+    });
 
     useEffect(() => {
-        if (!token) navigate("/");
-    }, [token, navigate]);
+        if (!token) {
+            navigate("/");
+            return;
+        }
 
-    if (!token) return null;
+        // If they didn't click the start button (state is null/undefined)
+        if (!location.state?.started) {
+            toast({
+                variant: "destructive",
+                title: "Unaccessible",
+                description: "Please start the quiz on selection page",
+            });
+            // Use replace: true so they don't get stuck in a back-button loop
+            navigate("/select", { replace: true });
+        }
+    }, [token, navigate, location]);
+    if (!token || !location.state?.started) return null;
+
+    useEffect(() => {
+        if (token) loadNewQuestion();
+    }, [token]);
+
+    useEffect(() => {
+        let timer: number; // Browser setTimeout returns a number ID
+        if (isLoading || !question) {
+            timer = window.setTimeout(() => {
+                setShowFallback(true);
+            }, 5000);
+        }
+
+        return () => clearTimeout(timer);
+    }, [isLoading, question]);
 
     // const question: QuizQuestion = mockQuizData[currentIndex];
-    const progress = ((currentIndex) / 50) * 100;
+    const progress = ((currentIndex) / TOTAL_QUESTIONS) * 100;
 
     const fetchQuestion = () => {
         console.log(JSON.stringify({ scores: knowledgeScores, subject: "Chemistry" }))
 
+        const requestPayload = isTrial
+            ? {
+                subject: trialSubject,
+                difficulty: trialDifficulty,
+                is_trial: true
+            }
+            : {
+                scores: knowledgeScores?.subtopic,
+                subject: "Chemistry" // Or wherever you plan to get the normal subject from!
+            };
+
         return ResultAsync.fromPromise(
-            fetch(`${backendUrl}/api/ai/debug/question`, {
+            fetch(`${backendUrl}/api/ai/question`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    scores: knowledgeScores,
-                    subject: "Chemistr"
-                }),
+                body: JSON.stringify(requestPayload),
             }),
             (error) => ({ title: "Unreachable Server", reason: `Network Error: ${String(error)}` })
         ).andThen((response) => {
@@ -60,8 +146,22 @@ const QuizPage = () => {
                 }
 
                 // initializeSetup(data as AuthResponseData, cleanUrl);
-                console.log(data)
-                return okAsync(data);
+                console.log(`Raw: ${data}`)
+
+                // 1. Extract the actual generated question data
+                const aiQuestion = data.result.response;
+
+                // 2. Attach the image from the original seed query
+                aiQuestion.image = data.queries.image;
+
+                // 3. Check for the mock fallback error and pass it to the component
+                if (data.result.error) {
+                    aiQuestion.isMock = true;
+                    aiQuestion.mockMessage = data.result.error;
+                }
+
+                console.log(`aiQuestion: ${aiQuestion}`)
+                return okAsync(aiQuestion);
             });
         }).mapErr((err) => {
             // Ensure loading is off on error
@@ -78,8 +178,18 @@ const QuizPage = () => {
         const result = await fetchQuestion();
         result.match(
             (data) => {
+                console.log(`New Question: ${data}`)
                 setQuestion(data);
                 setIsLoading(false);
+
+                // Warn the user if they are receiving the mock fallback
+                if (data.isMock) {
+                    toast({
+                        variant: "destructive",
+                        title: "Offline Mode",
+                        description: data.mockMessage,
+                    });
+                }
             },
             (err) => {
                 toast({ variant: "destructive", title: err.title, description: err.reason });
@@ -95,9 +205,18 @@ const QuizPage = () => {
 
         const isCorrect = question.options[index] === question.answer;
 
+        // Calculate the new adaptive score
+        const updatedMasteryScore = calculateNewMasteryScore(
+            knowledgeScores?.subtopic[question.subtopic]?.mastery_score, // Current score (e.g., 0.5)
+            isCorrect,                                                 // True or False
+            question.bloom_taxonomy,                                   // e.g., "Understanding"
+            question.difficulty                                        // e.g., "Medium"
+        );
+        knowledgeScores.subtopic[question.subtopic].mastery_score = updatedMasteryScore
+
         if (isCorrect) {
             setScore((s) => s + 1);
-            toast({ title: "✅ Correct!", description: "Great job!" });
+            toast({ title: "✅ Correct!", description: `Score updated to ${updatedMasteryScore}` });
         } else {
             // Simulate POST to /retry
 
@@ -115,12 +234,12 @@ const QuizPage = () => {
             toast({
                 variant: "destructive",
                 title: "❌ Wrong!",
-                description: `The correct answer was: ${question.answers[question.correctIndex]}`,
+                description: `Score dropped to ${updatedMasteryScore}}`,
             });
         }
 
         setTimeout(() => {
-            if (currentIndex + 1 < 50) {
+            if (currentIndex + 1 < TOTAL_QUESTIONS) {
                 setCurrentIndex((i) => i + 1);
                 setSelected(null);
                 setShowResult(false);
@@ -130,21 +249,6 @@ const QuizPage = () => {
             }
         }, 1500);
     };
-
-    useEffect(() => {
-        if (token) loadNewQuestion();
-    }, [token]);
-
-    useEffect(() => {
-        let timer: number; // Browser setTimeout returns a number ID
-        if (isLoading || !question) {
-            timer = window.setTimeout(() => {
-                setShowFallback(true);
-            }, 1000);
-        }
-
-        return () => clearTimeout(timer);
-    }, [isLoading, question]);
 
     if (isLoading || !question) {
         const handleGoBack = () => {
@@ -186,12 +290,12 @@ const QuizPage = () => {
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <p className="text-4xl font-bold text-primary">
-                            {score} / 50
+                            {score} / {TOTAL_QUESTIONS}
                         </p>
                         <p className="text-muted-foreground">
-                            {score === 50
+                            {score === TOTAL_QUESTIONS
                                 ? "Perfect score! 🎉"
-                                : score >= 50 / 2
+                                : score >= TOTAL_QUESTIONS / 2
                                     ? "Good effort! Keep learning."
                                     : "Keep practicing, you'll improve!"}
                         </p>
@@ -203,17 +307,19 @@ const QuizPage = () => {
                             <Button variant="outline" onClick={() => navigate("/select")} className="gap-2">
                                 <ArrowLeft className="h-4 w-4" /> Back
                             </Button>
-                            <Button
-                                onClick={() => {
-                                    setCurrentIndex(0);
-                                    setScore(0);
-                                    setSelected(null);
-                                    setShowResult(false);
-                                    setFinished(false);
-                                }}
-                            >
-                                Retry Quiz
-                            </Button>
+                            {!isTrial &&
+                                <Button
+                                    onClick={() => {
+                                        setCurrentIndex(0);
+                                        setScore(0);
+                                        setSelected(null);
+                                        setShowResult(false);
+                                        setFinished(false);
+                                    }}
+                                >
+                                    Retry Quiz
+                                </Button>
+                            }
                         </div>
                     </CardContent>
                 </Card>
@@ -230,7 +336,7 @@ const QuizPage = () => {
                 <CardHeader className="space-y-3">
                     <div className="flex items-center justify-between text-sm text-muted-foreground">
                         <span>
-                            Question {currentIndex + 1} of {50}
+                            Question {currentIndex + 1} of {TOTAL_QUESTIONS}
                         </span>
                         <span className="font-semibold text-primary">Score: {score}</span>
                     </div>
@@ -249,12 +355,14 @@ const QuizPage = () => {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-1 gap-3">
-                        {question.answers.map((answer, i) => {
+                        {question.options.map((option, i) => {
                             let variant: "outline" | "default" | "destructive" | "secondary" = "outline";
                             let icon = null;
 
                             if (showResult) {
-                                if (i === question.correctIndex) {
+                                const correctIndex = question.options.indexOf(question.answer);
+
+                                if (i === correctIndex) {
                                     variant = "default";
                                     icon = <CheckCircle2 className="h-4 w-4" />;
                                 } else if (i === selected) {
@@ -274,7 +382,7 @@ const QuizPage = () => {
                                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-current/20 text-sm font-semibold">
                                         {String.fromCharCode(65 + i)}
                                     </span>
-                                    {answer}
+                                    {option}
                                     {icon && <span className="ml-auto">{icon}</span>}
                                 </Button>
                             );

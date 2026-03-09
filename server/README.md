@@ -1,5 +1,10 @@
 ## Developments
 ### From UV
+**Installing from selected project that uses uv**
+```bash
+uv sync
+```
+
 **Exporting from `pyproject.toml` or `uv.lock` (recommended)**
 ```bash
 uv pip compile pyproject.toml -o requirements.txt

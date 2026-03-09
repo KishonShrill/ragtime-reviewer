@@ -1,6 +1,5 @@
 import { createContext, useContext, useState } from 'react';
 import { okAsync, errAsync, ResultAsync } from 'neverthrow';
-
 import type { ReactNode } from 'react';
 import type { Subtopic } from '@/types/knowledge_score';
 import type {
@@ -83,11 +82,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         });
     };
 
-    const signup = (username: string, pass: string, url: string, secret: string) =>
-        executeAuth('/api/auth/signup', { username, password: pass, secret }, url);
+    const signup = (username: string, email: string, password: string, url: string, secret: string) =>
+        executeAuth('/api/auth/signup', { username, email, password, secret }, url);
 
-    const login = (username: string, pass: string, url: string) =>
-        executeAuth('/api/auth/login', { username, password: pass }, url);
+    const login = (username: string, password: string, url: string) =>
+        executeAuth('/api/auth/login', { username, password }, url);
 
     const logout = () => {
         setToken(null);

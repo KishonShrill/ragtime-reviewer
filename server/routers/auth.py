@@ -35,14 +35,20 @@ async def signup(request: SignupRequest) -> User:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"title": "SignUp Error!", 
                                                                              "reason": "Password too long (max 72 chars)"})
 
-    err, new_user = create_user(request.username, request.password, role)
+    err, new_user = create_user(
+            username=request.username, 
+            email=request.email, 
+            password=request.password, 
+            role=role
+    )
     
     if (err != True):
-        print(new_user)
+        print(f"\nNew User: {new_user}")
         token: str = create_access_token(payload=new_user)
 
         return User(
             username = request.username,
+            email = request.email,
             role = role,
             knowledge_scores = new_user.knowledge_scores,
             access_token = token
@@ -54,13 +60,14 @@ async def signup(request: SignupRequest) -> User:
 @router.post("/login")
 async def login(request: LoginRequest) -> User:
     user = verify_user(request.username, request.password)
-    username: str = user.get("username")
+    email: str = user.get("email")
     role: str = user.get("role")
     knowledge_scores: dict[str, Any]  = user.get("knowledge_scores")
 
     try: 
         old_user = User( 
-            username=username, 
+            username=request.username,
+            email=email,
             role=role, 
             knowledge_scores=Subtopics(subtopic=knowledge_scores),
             access_token=''
@@ -68,7 +75,8 @@ async def login(request: LoginRequest) -> User:
         token: str = create_access_token(payload=old_user)
 
         return User(
-            username=username,
+            username=request.username,
+            email=email,
             role=role,
             knowledge_scores=Subtopics(subtopic=knowledge_scores),
             access_token=token

@@ -31,8 +31,12 @@ def user_exists(username: str) -> bool:
         return True
     return False
 
-def verify_user(username: str, password: str) -> Mapping[str, Any]:
-    user = users.find_one(filter={ "username": username })
+def verify_user(mongoUser: str, password: str) -> Mapping[str, Any]:
+    user = users.find_one(filter={
+        "$or":[
+            {"username": mongoUser},
+            {"email": mongoUser}
+        ]})
     if not user:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"title": "Authorization Error",
                                                                           "reason": "User Doesn't Exist"})
@@ -50,7 +54,7 @@ new to change.
 """
 
 # --- CRUD ---
-def create_user(username: str, password: str, role: str) -> tuple[bool, User]:
+def create_user(username: str, email: str, password: str, role: str) -> tuple[bool, User]:
     """
     Inserts a new user into the collection with a Cold Start adaptive profile 
     and returns the created user data (excluding the password).
@@ -60,7 +64,7 @@ def create_user(username: str, password: str, role: str) -> tuple[bool, User]:
     # Initialize the Cold Start profile for the 4 core Science subjects
     initial_scores_model = {
         subject: SubtopicKnowledgeScore(
-                mastery_score = 0.5, 
+                mastery_score = 0.41, 
                 rank = "Medium",  # Cold start baseline
                 weak_concepts = []
         )
@@ -73,6 +77,7 @@ def create_user(username: str, password: str, role: str) -> tuple[bool, User]:
 
     user_doc: dict[str, Any] = {
         "username": username,
+        "email": email,
         "password": hashed_pw,
         "role": role,
         "knowledge_scores": initial_scores_dict,
@@ -85,10 +90,10 @@ def create_user(username: str, password: str, role: str) -> tuple[bool, User]:
     try:
         print(f"Inserting User: {user_doc}")
         _ = users.insert_one(document=user_doc)
-        return False, User(username=username, role=role, knowledge_scores=Subtopics(subtopic=initial_scores_model), access_token="")
+        return False, User(username=username, email=email, role=role, knowledge_scores=Subtopics(subtopic=initial_scores_model), access_token="")
     except Exception as e:
         print("An exception occurred ::", e)
-        return True, User(username='', role='', knowledge_scores=Subtopics(subtopic={}), access_token='')
+        return True, User(username='', email='', role='', knowledge_scores=Subtopics(subtopic={}), access_token='')
 
 
 def get_question(query_fields: LogicEngineResponse, excluded_ids: Optional[list[str]] = []) -> QuestionResponse:
