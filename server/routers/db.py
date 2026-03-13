@@ -7,10 +7,22 @@ import os
 
 
 users = db.get_collection(name="Users")
+logs = db.get_collection(name="Logs")
 
 router: APIRouter = APIRouter(prefix="/api", tags=["Database"])
+
 
 @router.get("/user/knowledge")
 def display_knowledge(user: Annotated[dict[str,str], Depends(dependency=user_required)]) -> Mapping[str, Any]:
     user = users.find_one(filter={ "username": user.get("username") })
     return { "knowledge_scores": user.get("knowledge_scores") }
+
+@router.post("/logs")
+def upload_question_logs(
+        user: Annotated[dict[str,str], Depends(dependency=user_required)],
+        data: dict[str,Any],
+        latestScores: dict[str,Any],
+        isCorrect: bool
+        ) -> None:
+    
+    ...

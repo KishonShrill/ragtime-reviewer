@@ -1,5 +1,5 @@
 from datetime import date
-from typing import TypedDict, Optional
+from typing import TypedDict, Optional, Any
 from pydantic import BaseModel
 
 
@@ -34,12 +34,16 @@ class QuestionLog(BaseModel):
     augmented: str
 
 class Logs(BaseModel):
-    username: str
-    question: QuestionLog
-    topic: str
-    bloom_level: str
-    result: str
-    timestamp: date
+    original_question_id: str
+    original_question: str
+    question: str
+    answer: str
+    options: list[str]
+    bloom_taxonomy: str
+    difficulty: str
+    subtopic: str
+    isCorrect: bool
+    latest_scores: dict[str,Any]
 
 
 # Profile Queries

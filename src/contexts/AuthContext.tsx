@@ -17,22 +17,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [user, setUser] = useState<string | null>(localStorage.getItem('user'));
     const [role, setRole] = useState<UserRole>(localStorage.getItem('role') as UserRole);
     const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+    const [email, setEmail] = useState<string | null>(localStorage.getItem('email'));
     const [backendUrl, setBackendUrl] = useState<string | null>(localStorage.getItem('backend_url'));
-    const [knowledgeScores, setKnowledgeScores] = useState<Subtopic>(JSON.parse(localStorage.getItem('knowledge_scores') ?? '{}') as Subtopic);
+    const [knowledgeScores, setKnowledgeScores] = useState<Subtopic>(() => {
+        const stored = JSON.parse(localStorage.getItem('knowledge_scores') ?? '{}');
+        return stored.subtopic ? stored.subtopic : stored;
+    });
     const [isLoading, setIsLoading] = useState(false);
 
     function initializeSetup(data: AuthResponseData, url: string) {
+        console.log(JSON.stringify(data))
         setToken(data.access_token);
         setRole(data.role);
+        setEmail(data.email);
         setUser(data.username);
         setBackendUrl(url);
-        setKnowledgeScores(data.knowledge_scores)
+        setKnowledgeScores(data.knowledge_scores.subtopic)
 
         localStorage.setItem('token', data.access_token);
         localStorage.setItem('role', data.role ?? '');
+        localStorage.setItem('email', data.email ?? '');
         localStorage.setItem('user', data.username);
         localStorage.setItem('backend_url', url);
-        localStorage.setItem('knowledge_scores', JSON.stringify(data.knowledge_scores));
+        localStorage.setItem('knowledge_scores', JSON.stringify(data.knowledge_scores.subtopic));
     }
 
     /**
@@ -91,6 +98,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const logout = () => {
         setToken(null);
         setRole('');
+        setEmail('');
         setUser(null);
         setBackendUrl(null);
         setKnowledgeScores(JSON.parse('{}'))
@@ -101,13 +109,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         localStorage.removeItem('knowledge_scores');
     };
 
-    const updateKnowledgeScores = (data: Subtopic) => {
-        setKnowledgeScores(data)
-    }
+    const updateKnowledgeScores = (topic: string, newScore: number) => {
+        setKnowledgeScores((prevScores) => {
+            // Safety check: Don't update if the topic doesn't exist
+            const updatedScore = Number.isNaN(newScore) ? 0 : newScore
+            if (!prevScores[topic]) return prevScores;
+
+            // Immutably copy the old state and inject the new score
+            const updatedScores = {
+                ...prevScores,
+                [topic]: {
+                    ...prevScores[topic],
+                    mastery_score: updatedScore
+                }
+            };
+
+            // Save the newly updated object to local storage
+            localStorage.setItem('knowledge_scores', JSON.stringify(updatedScores));
+
+            return updatedScores;
+        });
+    };
 
     return (
         <AuthContext.Provider value={{
             user,
+            email,
             role,
             token,
             login,

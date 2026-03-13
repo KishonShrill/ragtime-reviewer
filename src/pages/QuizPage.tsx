@@ -9,8 +9,8 @@ import { CheckCircle2, XCircle, ArrowLeft, Trophy } from "lucide-react";
 import { ResultAsync, errAsync, okAsync } from "neverthrow";
 import type { Question } from "@/types/question";
 
-
-const SCORING_MATRIX = {
+type ScoringMatrixType = Record<string, Record<string, Record<string, number>>>;
+const SCORING_MATRIX: ScoringMatrixType = {
     "correct": {
         Remembering: { Easy: 0.04, Medium: 0.05, Hard: 0.06 },
         Understanding: { Easy: 0.06, Medium: 0.08, Hard: 0.10 },
@@ -41,7 +41,7 @@ function calculateNewMasteryScore(currentScore: number, isCorrect: boolean, bloo
 };
 
 const QuizPage = () => {
-    const { token, backendUrl, knowledgeScores } = useAuth();
+    const { token, backendUrl, knowledgeScores, updateKnowledgeScores } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const { toast } = useToast();
@@ -57,11 +57,14 @@ const QuizPage = () => {
     const [selected, setSelected] = useState<number | null>(null);
     const [showResult, setShowResult] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [fetchError, setFetchError] = useState<{ title: string, reason: string } | null>(null);
+
     const [score, setScore] = useState(0);
     const [finished, setFinished] = useState(false);
     const TOTAL_QUESTIONS = isTrial ? 1 : 10;
     const [question, setQuestion] = useState<Question>({
         question: "",
+        description: "",
         options: [],
         answer: "",
         bloom_taxonomy: "",
@@ -74,8 +77,11 @@ const QuizPage = () => {
 
     useEffect(() => {
         if (!token) {
+            toast({
+                title: "Illegal Entry",
+                description: `Please sign in first!`,
+            });
             navigate("/");
-            return;
         }
 
         // If they didn't click the start button (state is null/undefined)
@@ -100,7 +106,7 @@ const QuizPage = () => {
         if (isLoading || !question) {
             timer = window.setTimeout(() => {
                 setShowFallback(true);
-            }, 5000);
+            }, 7000);
         }
 
         return () => clearTimeout(timer);
@@ -109,8 +115,9 @@ const QuizPage = () => {
     // const question: QuizQuestion = mockQuizData[currentIndex];
     const progress = ((currentIndex) / TOTAL_QUESTIONS) * 100;
 
-    const fetchQuestion = () => {
-        console.log(JSON.stringify({ scores: knowledgeScores, subject: "Chemistry" }))
+    const fetchQuestion = (overrideScores?: typeof knowledgeScores) => {
+        const scoresToUse = overrideScores || knowledgeScores;
+        console.log("Fetching with scores:", JSON.stringify(scoresToUse));
 
         const requestPayload = isTrial
             ? {
@@ -119,7 +126,7 @@ const QuizPage = () => {
                 is_trial: true
             }
             : {
-                scores: knowledgeScores?.subtopic,
+                scores: scoresToUse,
                 subject: "Chemistry" // Or wherever you plan to get the normal subject from!
             };
 
@@ -146,13 +153,22 @@ const QuizPage = () => {
                 }
 
                 // initializeSetup(data as AuthResponseData, cleanUrl);
-                console.log(`Raw: ${data}`)
+                console.log(`Raw: ${JSON.stringify(data)}`)
 
                 // 1. Extract the actual generated question data
                 const aiQuestion = data.result.response;
+                aiQuestion.original_question_id = data.queries.question_id;
+                aiQuestion.original_question = data.queries.question;
+
+                if (typeof aiQuestion === 'string') {
+                    return errAsync({
+                        title: "Backend Generation Error",
+                        reason: data.result.error // Shows the Python error in your toast notification
+                    });
+                }
 
                 // 2. Attach the image from the original seed query
-                aiQuestion.image = data.queries.image;
+                aiQuestion.image = data.queries?.image || null;
 
                 // 3. Check for the mock fallback error and pass it to the component
                 if (data.result.error) {
@@ -160,7 +176,7 @@ const QuizPage = () => {
                     aiQuestion.mockMessage = data.result.error;
                 }
 
-                console.log(`aiQuestion: ${aiQuestion}`)
+                console.log({ aiQuestion })
                 return okAsync(aiQuestion);
             });
         }).mapErr((err) => {
@@ -172,13 +188,14 @@ const QuizPage = () => {
         });
     }
 
-    const loadNewQuestion = async () => {
+    const loadNewQuestion = async (overrideScores?: typeof knowledgeScores) => {
         setIsLoading(true);
+        setFetchError(null);
 
-        const result = await fetchQuestion();
+        const result = await fetchQuestion(overrideScores);
         result.match(
             (data) => {
-                console.log(`New Question: ${data}`)
+                console.log(`New Question: ${JSON.stringify(data)}`)
                 setQuestion(data);
                 setIsLoading(false);
 
@@ -193,6 +210,7 @@ const QuizPage = () => {
             },
             (err) => {
                 toast({ variant: "destructive", title: err.title, description: err.reason });
+                setFetchError(err)
                 setIsLoading(false);
             }
         );
@@ -203,20 +221,54 @@ const QuizPage = () => {
         setSelected(index);
         setShowResult(true);
 
-        const isCorrect = question.options[index] === question.answer;
+        const isCorrect = question.options[index].toLowerCase() === question.answer.toLowerCase();
 
         // Calculate the new adaptive score
         const updatedMasteryScore = calculateNewMasteryScore(
-            knowledgeScores?.subtopic[question.subtopic]?.mastery_score, // Current score (e.g., 0.5)
+            knowledgeScores?.[question.subtopic]?.mastery_score,       // Current score (e.g., 0.5)
             isCorrect,                                                 // True or False
             question.bloom_taxonomy,                                   // e.g., "Understanding"
             question.difficulty                                        // e.g., "Medium"
         );
-        knowledgeScores.subtopic[question.subtopic].mastery_score = updatedMasteryScore
+        updateKnowledgeScores(question.subtopic, updatedMasteryScore);
+
+        let latestScores = knowledgeScores;
+        if (knowledgeScores[question.subtopic]) {
+            latestScores = {
+                ...knowledgeScores,
+                [question.subtopic]: {
+                    ...knowledgeScores[question.subtopic],
+                    mastery_score: updatedMasteryScore
+                }
+            };
+        }
 
         if (isCorrect) {
             setScore((s) => s + 1);
             toast({ title: "✅ Correct!", description: `Score updated to ${updatedMasteryScore}` });
+
+            ResultAsync.fromPromise(
+                fetch(`${backendUrl}/api/logs`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        data: question,
+                        isCorrect,
+                        latestScores
+                    }),
+                }),
+                (error) => ({ title: "Unreachable Server", reason: `Network Error: ${String(error)}` })
+            ).mapErr(() => {
+                toast({
+                    variant: "destructive",
+                    title: "Unreachable Server",
+                    description: `Network Error: Logging did not go through...`
+                })
+            })
+
         } else {
             // Simulate POST to /retry
 
@@ -230,27 +282,56 @@ const QuizPage = () => {
             //  body: JSON.stringify(question),
             //});
 
-            console.log("POST /retry", JSON.stringify(question));
             toast({
                 variant: "destructive",
                 title: "❌ Wrong!",
-                description: `Score dropped to ${updatedMasteryScore}}`,
+                description: `Score dropped to ${updatedMasteryScore}`,
             });
         }
 
         setTimeout(() => {
             if (currentIndex + 1 < TOTAL_QUESTIONS) {
                 setCurrentIndex((i) => i + 1);
+                setShowFallback(false);
                 setSelected(null);
                 setShowResult(false);
-                loadNewQuestion();
+                loadNewQuestion(latestScores);
             } else {
                 setFinished(true);
             }
         }, 1500);
     };
 
-    if (isLoading || !question) {
+    if (fetchError) {
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-background p-4">
+                <Card className="w-full max-w-md shadow-xl border-border/50 text-center">
+                    <CardHeader className="space-y-3">
+                        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-destructive/15">
+                            <XCircle className="h-8 w-8 text-destructive" />
+                        </div>
+                        <CardTitle className="text-xl font-bold text-foreground">{fetchError.title}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <p className="text-sm text-muted-foreground">{fetchError.reason}</p>
+                        <div className="flex gap-3 justify-center pt-2">
+                            <Button variant="outline" onClick={() => navigate("/select")} className="gap-2">
+                                <ArrowLeft className="h-4 w-4" /> Back
+                            </Button>
+                            <Button onClick={() => {
+                                loadNewQuestion();
+                                setShowFallback(false);
+                            }}>
+                                Get Another Question
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
+    if (isLoading || !question.question) {
         const handleGoBack = () => {
             navigate(token ? "/select" : "/");
         };
@@ -265,7 +346,7 @@ const QuizPage = () => {
                     {/* Conditional Rendering based on the 15s timer */}
                     {showFallback && (
                         <div className="flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <p className="text-sm text-destructive max-w-[300px]">
+                            <p className="text-sm text-destructive max-w-75">
                                 This is taking longer than usual. Check your backend connection or try again.
                             </p>
                             <Button onClick={handleGoBack} variant="default" className="gap-2">
@@ -315,6 +396,7 @@ const QuizPage = () => {
                                         setSelected(null);
                                         setShowResult(false);
                                         setFinished(false);
+                                        loadNewQuestion();
                                     }}
                                 >
                                     Retry Quiz
@@ -375,7 +457,7 @@ const QuizPage = () => {
                                 <Button
                                     key={i}
                                     variant={variant}
-                                    className="h-auto py-3 px-4 justify-start text-left gap-3 text-base"
+                                    className="h-auto py-3 px-4 justify-start text-left gap-3 text-base text-wrap!"
                                     onClick={() => handleAnswer(i)}
                                     disabled={showResult}
                                 >
