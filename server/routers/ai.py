@@ -68,11 +68,13 @@ async def get_rag_question(request: QuestionRequest) -> dict[str, Any]:
     ]
 
     start_time = time.perf_counter()
+
     try:
         response = await AsyncClient().chat(
-            model='llama3.1:8b', 
+            model='qwen3.5:0.8b', 
             messages=messages,
-            format='json'
+            format='json',
+            think=False
         )
         end_time = time.perf_counter()
 
