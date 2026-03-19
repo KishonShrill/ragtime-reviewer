@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import datetime
 from typing import TypedDict, Optional, Any
 from pydantic import BaseModel
 
@@ -42,9 +42,13 @@ class Logs(BaseModel):
     bloom_taxonomy: str
     difficulty: str
     subtopic: str
-    isCorrect: bool
-    latest_scores: dict[str,Any]
+    execution_time: float
 
+class LogPayload(BaseModel):
+    data: Logs
+    latestScores: dict[str, Any]
+    isCorrect: bool
+    timestamp: datetime
 
 # Profile Queries
 class SubtopicKnowledgeScore(BaseModel):
@@ -70,4 +74,4 @@ class User(BaseModel):
     email: str
     role: str
     knowledge_scores: Subtopics
-    access_token: str
+    access_token: Optional[str] = None

@@ -7,6 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, XCircle, ArrowLeft, Trophy } from "lucide-react";
 import { ResultAsync, errAsync, okAsync } from "neverthrow";
+import QuizImageViewer from "@/components/QuizImageViewer";
 import type { Question } from "@/types/question";
 
 type ScoringMatrixType = Record<string, Record<string, Record<string, number>>>;
@@ -61,7 +62,7 @@ const QuizPage = () => {
 
     const [score, setScore] = useState(0);
     const [finished, setFinished] = useState(false);
-    const TOTAL_QUESTIONS = isTrial ? 1 : 10;
+    const TOTAL_QUESTIONS = isTrial ? 1 : 50;
     const [question, setQuestion] = useState<Question>({
         question: "",
         description: "",
@@ -112,12 +113,26 @@ const QuizPage = () => {
         return () => clearTimeout(timer);
     }, [isLoading, question]);
 
-    // const question: QuizQuestion = mockQuizData[currentIndex];
     const progress = ((currentIndex) / TOTAL_QUESTIONS) * 100;
 
-    const fetchQuestion = (overrideScores?: typeof knowledgeScores) => {
+    const fetchQuestion = (overrideScores?: typeof knowledgeScores, targetIndex?: number) => {
         const scoresToUse = overrideScores || knowledgeScores;
-        console.log("Fetching with scores:", JSON.stringify(scoresToUse));
+        const actualIndex = targetIndex !== undefined ? targetIndex : currentIndex;
+        const getSubjectForQuestion = (index: number): string => {
+            if (index < 10) return "General Science";
+            if (index < 20) return "Biology";
+            if (index < 30) return "Chemistry";
+            if (index < 40) return "Physics";
+
+            // For index 40 to 49 (the final batch), pick randomly
+            const subjects = ["General Science", "Biology", "Chemistry", "Physics"];
+            const randomIndex = Math.floor(Math.random() * subjects.length);
+            return subjects[randomIndex];
+        };
+        const subjectToUse = getSubjectForQuestion(actualIndex);
+        console.log(`${actualIndex}. ${subjectToUse}`)
+
+        // console.log("Fetching with scores:", JSON.stringify(scoresToUse));
 
         const requestPayload = isTrial
             ? {
@@ -127,13 +142,16 @@ const QuizPage = () => {
             }
             : {
                 scores: scoresToUse,
-                subject: "Chemistry" // Or wherever you plan to get the normal subject from!
+                subject: subjectToUse
             };
 
         return ResultAsync.fromPromise(
             fetch(`${backendUrl}/api/ai/question`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify(requestPayload),
             }),
             (error) => ({ title: "Unreachable Server", reason: `Network Error: ${String(error)}` })
@@ -153,12 +171,17 @@ const QuizPage = () => {
                 }
 
                 // initializeSetup(data as AuthResponseData, cleanUrl);
-                console.log(`Raw: ${JSON.stringify(data)}`)
+                // console.log(`Raw: ${JSON.stringify(data)}`)
 
                 // 1. Extract the actual generated question data
                 const aiQuestion = data.result.response;
                 aiQuestion.original_question_id = data.queries.question_id;
                 aiQuestion.original_question = data.queries.question;
+                aiQuestion.execution_time = data.execution_time_seconds;
+
+                const questionIndex = data.log_count % TOTAL_QUESTIONS
+                if (questionIndex != 0)
+                    setCurrentIndex(questionIndex)
 
                 if (typeof aiQuestion === 'string') {
                     return errAsync({
@@ -176,7 +199,7 @@ const QuizPage = () => {
                     aiQuestion.mockMessage = data.result.error;
                 }
 
-                console.log({ aiQuestion })
+                // console.log({ aiQuestion })
                 return okAsync(aiQuestion);
             });
         }).mapErr((err) => {
@@ -188,14 +211,13 @@ const QuizPage = () => {
         });
     }
 
-    const loadNewQuestion = async (overrideScores?: typeof knowledgeScores) => {
+    const loadNewQuestion = async (overrideScores?: typeof knowledgeScores, targetIndex?: number) => {
         setIsLoading(true);
         setFetchError(null);
 
-        const result = await fetchQuestion(overrideScores);
+        const result = await fetchQuestion(overrideScores, targetIndex);
         result.match(
             (data) => {
-                console.log(`New Question: ${JSON.stringify(data)}`)
                 setQuestion(data);
                 setIsLoading(false);
 
@@ -246,29 +268,6 @@ const QuizPage = () => {
         if (isCorrect) {
             setScore((s) => s + 1);
             toast({ title: "✅ Correct!", description: `Score updated to ${updatedMasteryScore}` });
-
-            ResultAsync.fromPromise(
-                fetch(`${backendUrl}/api/logs`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        data: question,
-                        isCorrect,
-                        latestScores
-                    }),
-                }),
-                (error) => ({ title: "Unreachable Server", reason: `Network Error: ${String(error)}` })
-            ).mapErr(() => {
-                toast({
-                    variant: "destructive",
-                    title: "Unreachable Server",
-                    description: `Network Error: Logging did not go through...`
-                })
-            })
-
         } else {
             // Simulate POST to /retry
 
@@ -289,13 +288,39 @@ const QuizPage = () => {
             });
         }
 
+        const currentTime = new Date().toISOString();
+        ResultAsync.fromPromise(
+            fetch(`${backendUrl}/api/logs`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    data: question,
+                    isCorrect,
+                    latestScores,
+                    timestamp: currentTime,
+                }),
+            }),
+            (error) => ({ title: "Unreachable Server", reason: `Network Error: ${String(error)}` })).mapErr(() => {
+                toast({
+                    variant: "destructive",
+                    title: "Unreachable Server",
+                    description: `Network Error: Logging did not go through...`
+                })
+            })
+
         setTimeout(() => {
             if (currentIndex + 1 < TOTAL_QUESTIONS) {
+                const nextIndex = currentIndex + 1; // Calculate it once
+
                 setCurrentIndex((i) => i + 1);
                 setShowFallback(false);
                 setSelected(null);
                 setShowResult(false);
-                loadNewQuestion(latestScores);
+
+                loadNewQuestion(latestScores, nextIndex);
             } else {
                 setFinished(true);
             }
@@ -432,6 +457,9 @@ const QuizPage = () => {
                             alt="Question illustration"
                             className="w-full h-48 object-cover rounded-lg"
                         />
+                    )}
+                    {question.image && question.image.length > 0 && (
+                        <QuizImageViewer images={question.image.split(",")} />
                     )}
                     <CardTitle className="text-xl font-bold text-foreground">{question.question}</CardTitle>
                 </CardHeader>

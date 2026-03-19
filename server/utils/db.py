@@ -5,6 +5,7 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 from utils.hashing import hash_password, verify_password
 from .schema import LogicEngineResponse, Logs, SubtopicKnowledgeScore, Subtopics, QuestionResponse, User
 from typing import cast, Any, Mapping, Optional
+from datetime import datetime
 import os
 
 
@@ -93,9 +94,10 @@ def create_user(username: str, email: str, password: str, role: str) -> tuple[bo
         return False, User(username=username, email=email, role=role, knowledge_scores=Subtopics(subtopic=initial_scores_model), access_token="")
     except Exception as e:
         print("An exception occurred ::", e)
-        return True, User(username='', email='', role='', knowledge_scores=Subtopics(subtopic={}), access_token='')
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
+                                                                                       "reason": "Cannot create user, database is down..."})
 
-def create_logs(user: User, data: Logs, latestScores: dict[str,str], isCorrect: bool) -> None:
+def create_logs(user: User, data: Logs, timestamp: datetime, latestScores: dict[str,Any], isCorrect: bool) -> None:
     try:
         payload = {
             "user": user.username,
@@ -111,6 +113,8 @@ def create_logs(user: User, data: Logs, latestScores: dict[str,str], isCorrect: 
                 "difficulty": data.difficulty,
                 "subtopic": data.subtopic
             },
+            "timestamp": timestamp,
+            "execution_time": data.execution_time,
             "updated_scores": latestScores,
             "isCorrect": isCorrect
         }
@@ -124,7 +128,7 @@ def create_logs(user: User, data: Logs, latestScores: dict[str,str], isCorrect: 
     except Exception as e:
         print(e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
-                                                                                       "reason": "Can't connect to server, please try again..."})
+                                                                                       "reason": "Cannot create log for user for database..."})
 
 
 def get_logs_count(user: User) -> int:
@@ -137,7 +141,22 @@ def get_logs_count(user: User) -> int:
     except Exception as e:
         print(e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
-                                                                                       "reason": "Can't connect to server, please try again..."})
+                                                                                       "reason": "Cannot get logs count from database..."})
+
+def get_scores_of_user(user: User) -> dict[str,Any]:
+    try:
+        cursor = logs.find({"user": user.username}, {"knowledge_base": 0, "augmented": 0}).sort("timestamp", 1)
+        logs_list = list(cursor)
+        
+        for log in logs_list:
+            log["_id"] = str(log["_id"]) 
+        
+        return {"status": "success", "data": logs_list}
+    
+    except:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
+                                                                                       "reason": "Cannot get logs of user from database..."})
+
 
 def get_question(query_fields: LogicEngineResponse, excluded_ids: Optional[list[str]] = []) -> QuestionResponse:
     try:
@@ -177,4 +196,4 @@ def get_question(query_fields: LogicEngineResponse, excluded_ids: Optional[list[
     except Exception as e:
         print(e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
-                                                                                       "reason": "Can't connect to server, please try again..."})
+                                                                                       "reason": "Cannot fetch question, database is down..."})

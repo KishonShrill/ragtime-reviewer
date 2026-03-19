@@ -17,13 +17,19 @@ or reading tokens for the api routes
 """
 
 def create_access_token(payload: User) -> str:
-    json_compatible_payload = {
-        "username": payload.username,
-        "role": payload.role,
-        "knowledge_scores": payload.knowledge_scores.model_dump()
-    }
-    token = jwt.encode(payload=json_compatible_payload, key=os.getenv("JWT_SECRET"), algorithm=os.getenv("JWT_ALGORITHM"))
-    return token
+    try:
+        json_compatible_payload = {
+            "username": payload.username,
+            "email": payload.email,
+            "role": payload.role,
+            "knowledge_scores": payload.knowledge_scores.model_dump()
+        }
+        token = jwt.encode(payload=json_compatible_payload, key=os.getenv("JWT_SECRET"), algorithm=os.getenv("JWT_ALGORITHM"))
+        return token
+    except Exception as e: 
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail={"title": "Token Error",
+                                                                              "reason": f"Something went wrong when creating the roken: {e}"})
+
 
 def read_access_token(payload: Annotated[HTTPAuthorizationCredentials, Depends(dependency=security)]) -> dict[str,str]:
     token: str = payload.credentials
@@ -53,7 +59,7 @@ def admin_required(user: Annotated[User, Depends(dependency=read_access_token)])
             detail={"title": "Authorization Error",
                     "reason": "Admin privileges required"}
         )
-    return User(user)
+    return User(**user)
 
 def user_required(user: Annotated[User, Depends(dependency=read_access_token)]) -> User:
     if user.get("role") not in ALLOWED_ROLES:
@@ -62,4 +68,4 @@ def user_required(user: Annotated[User, Depends(dependency=read_access_token)]) 
             detail={"title": "Authorization Error",
                     "reason": "User privileges required"}
         )
-    return User(user)
+    return User(**user)

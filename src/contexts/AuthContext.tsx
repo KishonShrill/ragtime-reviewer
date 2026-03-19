@@ -14,13 +14,13 @@ import type {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-    const [user, setUser] = useState<string | null>(localStorage.getItem('user'));
-    const [role, setRole] = useState<UserRole>(localStorage.getItem('role') as UserRole);
-    const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
-    const [email, setEmail] = useState<string | null>(localStorage.getItem('email'));
-    const [backendUrl, setBackendUrl] = useState<string | null>(localStorage.getItem('backend_url'));
+    const [user, setUser] = useState<string | null>(localStorage.getItem('reviewer_user'));
+    const [role, setRole] = useState<UserRole>(localStorage.getItem('reviewer_role') as UserRole);
+    const [token, setToken] = useState<string | null>(localStorage.getItem('reviewer_token'));
+    const [email, setEmail] = useState<string | null>(localStorage.getItem('reviewer_email'));
+    const [backendUrl, setBackendUrl] = useState<string | null>(localStorage.getItem('reviewer_backend_url'));
     const [knowledgeScores, setKnowledgeScores] = useState<Subtopic>(() => {
-        const stored = JSON.parse(localStorage.getItem('knowledge_scores') ?? '{}');
+        const stored = JSON.parse(localStorage.getItem('reviewer_knowledge_scores') ?? '{}');
         return stored.subtopic ? stored.subtopic : stored;
     });
     const [isLoading, setIsLoading] = useState(false);
@@ -34,12 +34,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setBackendUrl(url);
         setKnowledgeScores(data.knowledge_scores.subtopic)
 
-        localStorage.setItem('token', data.access_token);
-        localStorage.setItem('role', data.role ?? '');
-        localStorage.setItem('email', data.email ?? '');
-        localStorage.setItem('user', data.username);
-        localStorage.setItem('backend_url', url);
-        localStorage.setItem('knowledge_scores', JSON.stringify(data.knowledge_scores.subtopic));
+        localStorage.setItem('reviewer_token', data.access_token);
+        localStorage.setItem('reviewer_role', data.role ?? '');
+        localStorage.setItem('reviewer_email', data.email ?? '');
+        localStorage.setItem('reviewer_user', data.username);
+        localStorage.setItem('reviewer_backend_url', url);
+        localStorage.setItem('reviewer_knowledge_scores', JSON.stringify(data.knowledge_scores.subtopic));
     }
 
     /**
@@ -102,11 +102,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUser(null);
         setBackendUrl(null);
         setKnowledgeScores(JSON.parse('{}'))
-        localStorage.removeItem('token');
-        localStorage.removeItem('role');
-        localStorage.removeItem('user');
-        localStorage.removeItem('backend_url');
-        localStorage.removeItem('knowledge_scores');
+        localStorage.removeItem('reviewer_token');
+        localStorage.removeItem('reviewer_role');
+        localStorage.removeItem('reviewer_email')
+        localStorage.removeItem('reviewer_user');
+        localStorage.removeItem('reviewer_backend_url');
+        localStorage.removeItem('reviewer_knowledge_scores');
+        localStorage.removeItem(`reviewer_quizLogs_${user}`);
     };
 
     const updateKnowledgeScores = (topic: string, newScore: number) => {
@@ -125,7 +127,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             };
 
             // Save the newly updated object to local storage
-            localStorage.setItem('knowledge_scores', JSON.stringify(updatedScores));
+            localStorage.setItem('reviewer_knowledge_scores', JSON.stringify(updatedScores));
 
             return updatedScores;
         });
