@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, XCircle, ArrowLeft, Trophy } from "lucide-react";
 import { ResultAsync, errAsync, okAsync } from "neverthrow";
@@ -192,6 +193,7 @@ const QuizPage = () => {
 
                 // 2. Attach the image from the original seed query
                 aiQuestion.image = data.queries?.image || null;
+                console.log(aiQuestion.image)
 
                 // 3. Check for the mock fallback error and pass it to the component
                 if (data.result.error) {
@@ -462,6 +464,42 @@ const QuizPage = () => {
                         <QuizImageViewer images={question.image.split(",")} />
                     )}
                     <CardTitle className="text-xl font-bold text-foreground">{question.question}</CardTitle>
+
+                    {/* NEW: Question Metadata Badges */}
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                        {question.subtopic && (
+                            <Badge
+                                variant="secondary"
+                                className={`text-xs font-bold`}
+                            >
+                                {question.subtopic}
+                            </Badge>
+                        )}
+                        {question.difficulty && (
+                            <Badge
+                                variant="outline"
+                                className={`text-xs font-normal ${question.difficulty === "Easy" ? "bg-green-600 text-white font-bold" :
+                                    question.difficulty === "Medium" ? "bg-[#f97415] text-white font-bold" :
+                                        question.difficulty === "Hard" ? "bg-red-500 text-white font-bold" :
+                                            "text-muted-foreground"
+                                    }`}
+                            >
+                                {question.difficulty}
+                            </Badge>
+                        )}
+                        {question.bloom_taxonomy && (
+                            <Badge
+                                variant="outline"
+                                className={`text-xs font-bold ${question.bloom_taxonomy === "Remembering" ? "text-green-600" :
+                                    question.bloom_taxonomy === "Understanding" ? "text-[#f97415]" :
+                                        question.bloom_taxonomy === "Applying" ? "text-destructive" :
+                                            "text-muted-foreground"
+                                    }`}
+                            >
+                                {question.bloom_taxonomy}
+                            </Badge>
+                        )}
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-1 gap-3">
@@ -500,7 +538,7 @@ const QuizPage = () => {
                     </div>
                 </CardContent>
             </Card>
-        </div>
+        </div >
     );
 };
 
