@@ -25,7 +25,13 @@ const SelectionPage = () => {
     const [hard, setHard] = useState("");
 
     useEffect(() => {
-        if (!token) navigate("/");
+        if (!token) {
+            toast({
+                title: "Illegal Entry",
+                description: `Please sign in first!`,
+            });
+            navigate("/");
+        }
     }, [token, navigate]);
     if (!token) return null;
 
@@ -96,6 +102,8 @@ const SelectionPage = () => {
         navigate("/");
     };
 
+    const handleProfile = () => navigate("/profile")
+
     if (!token) return null;
 
     return (
@@ -103,13 +111,13 @@ const SelectionPage = () => {
             <Card className="w-full max-w-lg shadow-xl border-border/50">
                 <CardHeader className="text-center space-y-2">
                     <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">
+                        <Button variant="ghost" size="sm" onClick={handleProfile} className="text-sm text-muted-foreground hover:bg-emerald-300 hover:cursor-pointer">
                             Hi, <span className="font-semibold text-foreground uppercase">{user}</span>{" "}
                             <span className="inline-block rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent capitalize">
                                 {role?.replace("_", " ")}
                             </span>
-                        </span>
-                        <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-1 text-muted-foreground">
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-1 text-muted-foreground hover:cursor-pointer">
                             <LogOut className="h-3.5 w-3.5" /> Logout
                         </Button>
                     </div>

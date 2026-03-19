@@ -1,8 +1,9 @@
-from typing import Any
+from typing import Any, Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from utils.schema import QuestionRequest, LogicEngineResponse, QuestionResponse
-from utils.db import get_question
+from utils.db import get_question, get_logs_count
 from utils.engine import prepare_next_question
+from utils.token import user_required
 from ollama import AsyncClient
 import time
 import json
@@ -19,10 +20,13 @@ async def debug_get_question(request: QuestionRequest):
     return get_question(query_fields=result)
 
 @router.post("/question")
-async def get_rag_question(request: QuestionRequest) -> dict[str, Any]:
-    print(request) 
+async def get_rag_question( 
+        user: Annotated[dict[str,str], Depends(dependency=user_required)],
+        request: QuestionRequest) -> dict[str, Any]:
+    print(request)
     query: LogicEngineResponse = prepare_next_question(request)
     fetched_item: QuestionResponse = get_question(query)
+    log_count = get_logs_count(user)
     
     image_instruction = ""
     if fetched_item.get("image"):
@@ -68,11 +72,13 @@ async def get_rag_question(request: QuestionRequest) -> dict[str, Any]:
     ]
 
     start_time = time.perf_counter()
+
     try:
         response = await AsyncClient().chat(
-            model='llama3.1:8b', 
+            model='qwen3.5:0.8b', 
             messages=messages,
-            format='json'
+            format='json',
+            think=False
         )
         end_time = time.perf_counter()
 
@@ -121,6 +127,7 @@ async def get_rag_question(request: QuestionRequest) -> dict[str, Any]:
     return {
         "queries": fetched_item,
         "result": clean_result,
+        "log_count": log_count,
         "execution_time_seconds": round(generation_time, 3)
     }
 

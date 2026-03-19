@@ -8,6 +8,7 @@ import LandingPage from "./pages/LandingPage";
 import SelectionPage from "./pages/SelectionPage";
 import QuizPage from "./pages/QuizPage";
 import NotFoundPage from "./pages/NotFoundPage";
+import ProfilePage from "./pages/ProfilePage";
 
 const queryClient = new QueryClient();
 
@@ -21,6 +22,7 @@ const App = () => (
                     <Routes>
                         <Route path="/" element={<LandingPage />} />
                         <Route path="/select" element={<SelectionPage />} />
+                        <Route path="/profile" element={<ProfilePage />} />
                         <Route path="/quiz" element={<QuizPage />} />
                         <Route path="*" element={<NotFoundPage />} />
                     </Routes>

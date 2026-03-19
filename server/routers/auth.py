@@ -63,7 +63,7 @@ async def login(request: LoginRequest) -> User:
     email: str = user.get("email")
     role: str = user.get("role")
     knowledge_scores: dict[str, Any]  = user.get("knowledge_scores")
-
+    print(f"Email: {email}")
     try: 
         old_user = User( 
             username=request.username,

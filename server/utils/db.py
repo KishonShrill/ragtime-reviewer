@@ -3,8 +3,9 @@ from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 from utils.hashing import hash_password, verify_password
-from .schema import LogicEngineResponse, SubtopicKnowledgeScore, Subtopics, QuestionResponse, User
+from .schema import LogicEngineResponse, Logs, SubtopicKnowledgeScore, Subtopics, QuestionResponse, User
 from typing import cast, Any, Mapping, Optional
+from datetime import datetime
 import os
 
 
@@ -93,7 +94,68 @@ def create_user(username: str, email: str, password: str, role: str) -> tuple[bo
         return False, User(username=username, email=email, role=role, knowledge_scores=Subtopics(subtopic=initial_scores_model), access_token="")
     except Exception as e:
         print("An exception occurred ::", e)
-        return True, User(username='', email='', role='', knowledge_scores=Subtopics(subtopic={}), access_token='')
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
+                                                                                       "reason": "Cannot create user, database is down..."})
+
+def create_logs(user: User, data: Logs, timestamp: datetime, latestScores: dict[str,Any], isCorrect: bool) -> None:
+    try:
+        payload = {
+            "user": user.username,
+            "knowledge_base": {
+                "original_question_id": data.original_question_id,
+                "original_question": data.original_question
+            },
+            "augmented": {
+                "question": data.question,
+                "answer": data.answer,
+                "options": data.options,
+                "bloom_taxonomy": data.bloom_taxonomy,
+                "difficulty": data.difficulty,
+                "subtopic": data.subtopic
+            },
+            "timestamp": timestamp,
+            "execution_time": data.execution_time,
+            "updated_scores": latestScores,
+            "isCorrect": isCorrect
+        }
+
+        result = logs.insert_one(document=payload)
+        print(result)
+
+    except IndexError:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Error",
+                                                                                       "reason": "Query not found"})
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
+                                                                                       "reason": "Cannot create log for user for database..."})
+
+
+def get_logs_count(user: User) -> int:
+    try:
+        return logs.count_documents({ "user": user.username })
+
+    except IndexError:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Error",
+                                                                                       "reason": "Query not found"})
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
+                                                                                       "reason": "Cannot get logs count from database..."})
+
+def get_scores_of_user(user: User) -> dict[str,Any]:
+    try:
+        cursor = logs.find({"user": user.username}, {"knowledge_base": 0, "augmented": 0}).sort("timestamp", 1)
+        logs_list = list(cursor)
+        
+        for log in logs_list:
+            log["_id"] = str(log["_id"]) 
+        
+        return {"status": "success", "data": logs_list}
+    
+    except:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
+                                                                                       "reason": "Cannot get logs of user from database..."})
 
 
 def get_question(query_fields: LogicEngineResponse, excluded_ids: Optional[list[str]] = []) -> QuestionResponse:
@@ -134,4 +196,4 @@ def get_question(query_fields: LogicEngineResponse, excluded_ids: Optional[list[
     except Exception as e:
         print(e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
-                                                                                       "reason": "Can't connect to server, please try again..."})
+                                                                                       "reason": "Cannot fetch question, database is down..."})
