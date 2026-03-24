@@ -119,19 +119,7 @@ const QuizPage = () => {
     const fetchQuestion = (overrideScores?: typeof knowledgeScores, targetIndex?: number) => {
         const scoresToUse = overrideScores || knowledgeScores;
         const actualIndex = targetIndex !== undefined ? targetIndex : currentIndex;
-        const getSubjectForQuestion = (index: number): string => {
-            if (index < 10) return "General Science";
-            if (index < 20) return "Biology";
-            if (index < 30) return "Chemistry";
-            if (index < 40) return "Physics";
-
-            // For index 40 to 49 (the final batch), pick randomly
-            const subjects = ["General Science", "Biology", "Chemistry", "Physics"];
-            const randomIndex = Math.floor(Math.random() * subjects.length);
-            return subjects[randomIndex];
-        };
-        const subjectToUse = getSubjectForQuestion(actualIndex);
-        console.log(`${actualIndex}. ${subjectToUse}`)
+        console.log(`${actualIndex}. Question`)
 
         // console.log("Fetching with scores:", JSON.stringify(scoresToUse));
 
@@ -143,7 +131,7 @@ const QuizPage = () => {
             }
             : {
                 scores: scoresToUse,
-                subject: subjectToUse
+                current_index: currentIndex,
             };
 
         return ResultAsync.fromPromise(
@@ -452,13 +440,6 @@ const QuizPage = () => {
                     <Progress value={progress} className="h-2" />
                     {question.description && (
                         <p className="text-sm text-muted-foreground italic">{question.description}</p>
-                    )}
-                    {question.image && (
-                        <img
-                            src={question.image}
-                            alt="Question illustration"
-                            className="w-full h-48 object-cover rounded-lg"
-                        />
                     )}
                     {question.image && question.image.length > 0 && (
                         <QuizImageViewer images={question.image.split(",")} />

@@ -61,7 +61,7 @@ class Subtopics(BaseModel):
 
 class QuestionRequest(BaseModel):
     scores: Optional[dict[str, SubtopicKnowledgeScore]] = None
-    subject: str
+    subject: Optional[str] = None
     is_trial: bool = False
     difficulty: Optional[str] = None
 

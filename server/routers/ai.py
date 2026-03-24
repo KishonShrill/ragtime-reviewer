@@ -7,7 +7,10 @@ from utils.token import user_required
 from ollama import AsyncClient
 import time
 import json
-import random
+import numpy as np
+
+# Use the new random generator
+rng = np.random.default_rng()
 
 router: APIRouter = APIRouter(prefix="/api/ai", tags=["Large Language Model"])
 
@@ -20,13 +23,13 @@ async def debug_get_question(request: QuestionRequest):
     return get_question(query_fields=result)
 
 @router.post("/question")
-async def get_rag_question( 
+async def get_rag_question(
         user: Annotated[dict[str,str], Depends(dependency=user_required)],
-        request: QuestionRequest) -> dict[str, Any]:
-    print(request)
-    query: LogicEngineResponse = prepare_next_question(request)
-    fetched_item: QuestionResponse = get_question(query)
+        request: QuestionRequest
+        ) -> dict[str, Any]:
     log_count = get_logs_count(user)
+    query: LogicEngineResponse = prepare_next_question(request, log_count)
+    fetched_item: QuestionResponse = get_question(query)
     
     image_instruction = ""
     if fetched_item.get("image"):
@@ -114,8 +117,24 @@ async def get_rag_question(
     try:
         response_dict = clean_result.get("response", {})
         options = response_dict.get("options", [])
-        if isinstance(options, list):
-            random.shuffle(options)
+        answer = response_dict.get("answer")
+        
+        if isinstance(options, list) and answer:
+            # 1. SAFETY CHECK: Ensure the exact answer string is inside the options list
+            if answer not in options:
+                print("⚠️ Warning: Answer was missing from options. Injecting manually.")
+                
+                # If the LLM gave us 4 or more options, replace the last one so we don't end up with 5 options
+                if len(options) >= 4:
+                    options[-1] = answer
+                else:
+                    # If it gave us fewer than 4, just append it
+                    options.append(answer)
+
+            # 2. SHUFFLE: Randomize the order so the injected answer isn't always last
+            rng.shuffle(options)
+            
+            # 3. REASSIGN: Save the cleaned and shuffled options back to the dictionary
             clean_result["response"]["options"] = options
 
     except Exception as e:
@@ -129,25 +148,4 @@ async def get_rag_question(
         "result": clean_result,
         "log_count": log_count,
         "execution_time_seconds": round(generation_time, 3)
-    }
-
-
- 
-# @router.post("/quiz/submit_answer")
-# async def submit_answer(profile: LearnerProfile, is_correct: bool):
-#     # Convert incoming profile to dict
-#     profile_dict = profile.model_dump()
-#     
-#     # 1. Evaluate the answer and update mastery/scaffolding
-#     updated_profile = evaluate_answer(profile_dict, is_correct)
-#     
-#     # 2. Prepare specs for the next question based on new mastery
-#     next_question_specs = prepare_next_question(updated_profile)
-#     
-#     # 3. Retrieve/Generate the actual question
-#     next_question_data = get_question(next_question_specs)
-#     
-#     return {
-#         "updated_profile": updated_profile,
-#         "next_question": next_question_data
-#     }
+    } 
