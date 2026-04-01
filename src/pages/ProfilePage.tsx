@@ -11,7 +11,7 @@ import {
     ChartLegendContent,
     type ChartConfig,
 } from "@/components/ui/chart";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine } from "recharts";
+import { LineChart, Line, XAxis, YAxis, ReferenceLine } from "recharts";
 import { User, BookOpen, FlaskConical, Atom, Globe, ArrowLeft, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
