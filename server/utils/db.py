@@ -157,6 +157,25 @@ def get_scores_of_user(user: User) -> dict[str,Any]:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
                                                                                        "reason": "Cannot get logs of user from database..."})
 
+def get_latest_user_scores(username: str) -> dict[str,Any] | None:
+    try:
+        # FIXED: parameter is 'username', matching the query
+        latest_log = logs.find_one(
+            {"user": username}, 
+            {"updated_scores": 1, "_id": 0}, 
+            sort=[("timestamp", -1)] 
+        )
+        return latest_log
+
+    except Exception as e:
+        print(f"Error fetching latest score: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail={
+                "title": "MongoDB Connection Error",
+                "reason": "Cannot get latest scores from the logs..."
+            }
+        ) 
 
 def get_question(query_fields: LogicEngineResponse, excluded_ids: Optional[list[str]] = []) -> QuestionResponse:
     try:

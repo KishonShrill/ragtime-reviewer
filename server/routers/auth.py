@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from utils.db import create_user, user_exists, verify_user 
+from utils.db import create_user, user_exists, verify_user, get_latest_user_scores 
 from utils.token import user_required, create_access_token
 from utils.schema import SignupRequest, LoginRequest, User, Subtopics
 from typing import cast, Annotated, Mapping, Any
@@ -62,14 +62,21 @@ async def login(request: LoginRequest) -> User:
     user = verify_user(request.username, request.password)
     email: str = user.get("email")
     role: str = user.get("role")
-    knowledge_scores: dict[str, Any]  = user.get("knowledge_scores")
+    username: str = user.get("username")
+    latest_log = get_latest_user_scores(username)
+
+    if latest_log and "updated_scores" in latest_log:
+        current_scores = latest_log["updated_scores"]
+    else:
+        current_scores = user_doc.get("knowledge_scores")
+
     print(f"Email: {email}")
     try: 
         old_user = User( 
             username=request.username,
             email=email,
             role=role, 
-            knowledge_scores=Subtopics(subtopic=knowledge_scores),
+            knowledge_scores=Subtopics(subtopic=current_scores),
             access_token=''
         )
         token: str = create_access_token(payload=old_user)
@@ -78,11 +85,16 @@ async def login(request: LoginRequest) -> User:
             username=request.username,
             email=email,
             role=role,
-            knowledge_scores=Subtopics(subtopic=knowledge_scores),
+            knowledge_scores=Subtopics(subtopic=current_scores),
             access_token=token
         )
 
     except Exception as e:
-        print(e)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "Login Error!", 
-                                                                                       "reason": "Something went wrong when logging in..."})
+        print(f"Login error parsing scores: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail={
+                "title": "Login Error!", 
+                "reason": "Something went wrong when logging in..."
+            }
+        )
