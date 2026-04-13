@@ -27,7 +27,8 @@ class QuestionResponse(TypedDict):
     bloom_taxonomy: str
     difficulty: str
     subtopic: str
-    image: Optional[str] # Add this line! Allows a string or None.
+    image: Optional[str]
+    description: Optional[str]
 
 class QuestionLog(BaseModel):
     original: str
@@ -62,8 +63,9 @@ class Subtopics(BaseModel):
 class QuestionRequest(BaseModel):
     scores: Optional[dict[str, SubtopicKnowledgeScore]] = None
     subject: Optional[str] = None
-    is_trial: bool = False
+    is_trial: Optional[bool] = False
     difficulty: Optional[str] = None
+    question_id: Optional[str] = None
 
 class LearnerProfile(BaseModel):
     username: str

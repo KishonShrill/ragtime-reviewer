@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,13 +11,16 @@ import {
     ChartLegendContent,
     type ChartConfig,
 } from "@/components/ui/chart";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine } from "recharts";
-import { User, BookOpen, FlaskConical, Atom, Globe, ArrowLeft, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, ReferenceLine } from "recharts";
+import { User, BookOpen, FlaskConical, Atom, Globe, ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, Download, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { ResultAsync, errAsync, okAsync } from "neverthrow";
+import html2canvas from "html2canvas";
+import { toPng } from 'html-to-image'
+import jsPDF from "jspdf";
 
 // Chart configuration and icons remain unchanged
 const chartConfig: ChartConfig = {
@@ -52,6 +55,8 @@ const ProfilePage = () => {
     const BATCH_SIZE = 50;
     const [progressData, setProgressData] = useState<any[]>([]);
     const [currentPage, setCurrentPage] = useState(1);
+    const [isExporting, setIsExporting] = useState(false);
+    const printRef = useRef<HTMLDivElement>(null);
 
     // NEW: Loading state for the refresh button
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -114,9 +119,12 @@ const ProfilePage = () => {
             setIsRefreshing(false);
             if (!dataArray || dataArray.length === 0) return;
 
+            console.log({ dataArray })
+
             const formattedChartData = dataArray.map((log: any, index: number) => {
                 const scores = log.updated_scores;
                 return {
+                    ...log,
                     quiz: `Q${index + 1}`,
                     Biology: scores.Biology?.mastery_score || 0,
                     Chemistry: scores.Chemistry?.mastery_score || 0,
@@ -124,6 +132,8 @@ const ProfilePage = () => {
                     generalScience: scores["General Science"]?.mastery_score || 0,
                 };
             });
+
+            console.log({ formattedChartData })
 
             setProgressData(formattedChartData);
             setCurrentPage(Math.max(1, Math.ceil(formattedChartData.length / BATCH_SIZE)));
@@ -135,6 +145,111 @@ const ProfilePage = () => {
                 toast({ title: "Synced!", description: "Your chart is up to date." });
             }
         });
+    };
+
+    // const handleExportPDF = async () => {
+    //     if (!printRef.current) return;
+
+    //     setIsExporting(true);
+    //     toast({ title: "Generating PDF", description: "Please wait while we prepare your report..." });
+
+    //     try {
+    //         // 1. Take a screenshot of the targeted element
+    //         const canvas = await html2canvas(printRef.current, {
+    //             scale: 2, // Higher scale = better resolution
+    //             useCORS: true, // Helps if you have external images
+    //             backgroundColor: "#ffffff", // Ensures a white background instead of transparent
+    //         });
+
+    //         // 2. Calculate PDF dimensions (A4 size)
+    //         const imgData = canvas.toDataURL("image/png");
+    //         const pdf = new jsPDF("p", "mm", "a4");
+    //         const pdfWidth = pdf.internal.pageSize.getWidth();
+    //         const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+    //         // 3. Add the image to the PDF and download
+    //         pdf.addImage(imgData, "PNG", 0, 10, pdfWidth, pdfHeight);
+    //         pdf.save(`${user}_Reviewer_Progress.pdf`);
+
+    //         toast({ title: "Success!", description: "PDF downloaded successfully." });
+    //     } catch (error) {
+    //         console.error("PDF Export Error:", error);
+    //         toast({ variant: "destructive", title: "Export Failed", description: "Could not generate PDF." });
+    //     } finally {
+    //         setIsExporting(false);
+    //     }
+    // };
+
+    const handleExportPDF = async () => {
+        if (!printRef.current) return;
+
+        setIsExporting(true);
+        toast({ title: "Generating PDF", description: "Please wait while we prepare your multi-page report..." });
+
+        try {
+            // 1. Take a high-res screenshot
+            const dataUrl = await toPng(printRef.current, {
+                quality: 1,
+                pixelRatio: 2,
+                backgroundColor: "#ffffff",
+                fontEmbedCSS: '',
+            });
+
+            // 2. Setup PDF dimensions
+            const pdf = new jsPDF("p", "mm", "a4");
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+
+            // --- NEW: MARGIN MATH ---
+            const margin = 25.4; // Exactly 1 inch in millimeters
+            const usableWidth = pdfWidth - (margin * 2);
+            const usableHeight = pdfHeight - (margin * 2);
+
+            // 3. Calculate total image height based on the USABLE width
+            const domElementHeight = printRef.current.offsetHeight;
+            const domElementWidth = printRef.current.offsetWidth;
+            const imgHeight = (domElementHeight * usableWidth) / domElementWidth;
+
+            // 4. Multi-Page Slicing Logic with Margins
+            let heightLeft = imgHeight;
+            let position = 0;
+
+            // Stamp the first page
+            pdf.addImage(dataUrl, "PNG", margin, margin + position, usableWidth, imgHeight);
+
+            // "White-out" the bottom margin in case the image bleeds into it
+            pdf.setFillColor(255, 255, 255);
+            pdf.rect(0, pdfHeight - margin, pdfWidth, margin, "F");
+
+            heightLeft -= usableHeight;
+
+            // Keep adding pages as long as there is content left to show
+            while (heightLeft > 0) {
+                position -= usableHeight; // Shift the image UP by exactly one usable page length
+                pdf.addPage();
+
+                // Stamp the image again (shifted up)
+                pdf.addImage(dataUrl, "PNG", margin, margin + position, usableWidth, imgHeight);
+
+                // "White-out" the top margin
+                pdf.setFillColor(255, 255, 255);
+                pdf.rect(0, 0, pdfWidth, margin, "F");
+
+                // "White-out" the bottom margin
+                pdf.rect(0, pdfHeight - margin, pdfWidth, margin, "F");
+
+                heightLeft -= usableHeight;
+            }
+
+            pdf.save(`${user}_Reviewer_Progress.pdf`);
+
+            toast({ title: "Success!", description: "Multi-page PDF downloaded successfully." });
+        } catch (error) {
+            console.error("PDF Export Error:", error);
+            toast({ variant: "destructive", title: "Export Failed", description: "Could not generate PDF." });
+        } finally {
+            setIsExporting(false);
+        }
     };
 
     // Load data on initial mount
@@ -158,169 +273,257 @@ const ProfilePage = () => {
     return (
         <div className="min-h-screen bg-background p-4 md:p-8">
             <div className="mx-auto max-w-5xl space-y-6 flex flex-col">
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => navigate(token ? "/select" : "/")}
-                    className="text-muted-foreground self-end"
-                >
-                    <ArrowLeft className="mr-2 h-4 w-4" /> Back
-                </Button>
+                {/* Header Buttons */}
+                <div className="flex items-center justify-between">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => navigate(token ? "/select" : "/")}
+                        className="text-muted-foreground hover:cursor-pointer"
+                    >
+                        <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                    </Button>
 
-                <Card>
-                    <CardContent className="flex flex-col sm:flex-row items-center gap-5 p-6 ">
-                        <Avatar className="h-20 w-20 border-2 border-primary">
-                            <AvatarImage src="" />
-                            <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
-                                <User className="h-8 w-8" />
-                            </AvatarFallback>
-                        </Avatar>
-                        <div className="flex flex-col items-center sm:items-start">
-                            <h1 className="text-2xl font-bold text-foreground">
-                                {user}
-                            </h1>
-                            <p className="text-muted-foreground">{email}</p>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    {Object.entries(knowledgeScores || {}).map(([subject, data]: [string, any]) => {
-                        const label = getMasteryLabel(data.mastery_score);
-                        return (
-                            <Card key={subject}>
-                                <CardHeader className="flex flex-row items-center gap-2 pb-2">
-                                    <span className="text-primary">{subjectIcons[subject]}</span>
-                                    <CardTitle className="text-base">{subject}</CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-3">
-                                    <div className="flex items-baseline justify-between">
-                                        <span className={`text-2xl font-bold ${label.textClass}`}>
-                                            {Math.round(data.mastery_score * 100)}%
-                                        </span>
-                                        <span className={`text-sm font-medium ${label.textClass}`}>
-                                            {label.text}
-                                        </span>
-                                    </div>
-                                    <Progress value={data.mastery_score * 100} color={label.bgClass} className="h-2" />
-                                    <div className="pt-1">
-                                        {data.weak_concepts && data.weak_concepts.length > 0 ? (
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {data.weak_concepts.map((c: string) => (
-                                                    <Badge key={c} variant="secondary" className="text-xs">
-                                                        {c}
-                                                    </Badge>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <p className="text-xs text-muted-foreground">
-                                                No weak concepts identified yet.
-                                            </p>
-                                        )}
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        );
-                    })}
+                    {/* NEW: Export Button */}
+                    <Button
+                        variant="default"
+                        size="sm"
+                        onClick={handleExportPDF}
+                        disabled={isExporting}
+                        className="gap-2 hover:cursor-pointer"
+                    >
+                        <Download className="h-4 w-4" />
+                        {isExporting ? "Exporting..." : "Export as PDF"}
+                    </Button>
                 </div>
 
-                <Card>
-                    {/* NEW: Refresh Button added to Header */}
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle>Progress Over Time</CardTitle>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => fetchLogs(true)}
-                            disabled={isRefreshing}
-                        >
-                            <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                            Sync Data
-                        </Button>
-                    </CardHeader>
-                    <CardContent>
-                        {progressData.length > 0 ? (
-                            <div className="space-y-4">
-                                <ChartContainer config={chartConfig} className="h-[350px] w-full">
-                                    <LineChart data={currentBatchData}>
-                                        {/* <CartesianGrid strokeDasharray="3 3" className="stroke-border" /> */}
+                <div ref={printRef} className="space-y-6 p-2 bg-background">
+                    <Card>
+                        <CardContent className="flex flex-col sm:flex-row items-center gap-5 p-6 ">
+                            <Avatar className="h-20 w-20 border-2 border-primary">
+                                <AvatarImage src="" />
+                                <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
+                                    <User className="h-8 w-8" />
+                                </AvatarFallback>
+                            </Avatar>
+                            <div className="flex flex-col items-center sm:items-start">
+                                <h1 className="text-2xl font-bold text-foreground">
+                                    {user}
+                                </h1>
+                                <p className="text-muted-foreground">{email}</p>
+                            </div>
+                        </CardContent>
+                    </Card>
 
-                                        {currentBatchData.map((dataPoint) => {
-                                            // Extract the number from "Q10", "Q20", etc.
-                                            const qNum = parseInt(dataPoint.quiz.replace("Q", ""));
-                                            if (qNum % 10 === 0) {
-                                                return (
-                                                    <ReferenceLine
-                                                        key={dataPoint.quiz}
-                                                        x={dataPoint.quiz}
-                                                        stroke="hsl(var(--muted-foreground))"
-                                                        strokeDasharray="4 4"
-                                                        opacity={0.5}
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        {Object.entries(knowledgeScores || {}).map(([subject, data]: [string, any]) => {
+                            const label = getMasteryLabel(data.mastery_score);
+                            return (
+                                <Card key={subject}>
+                                    <CardHeader className="flex flex-row items-center gap-2 pb-2">
+                                        <span className="text-primary">{subjectIcons[subject]}</span>
+                                        <CardTitle className="text-base">{subject}</CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="space-y-3">
+                                        <div className="flex items-baseline justify-between">
+                                            <span className={`text-2xl font-bold ${label.textClass}`}>
+                                                {Math.round(data.mastery_score * 100)}%
+                                            </span>
+                                            <span className={`text-sm font-medium ${label.textClass}`}>
+                                                {label.text}
+                                            </span>
+                                        </div>
+                                        <Progress value={data.mastery_score * 100} color={label.bgClass} className="h-2" />
+                                        <div className="pt-1">
+                                            {data.weak_concepts && data.weak_concepts.length > 0 ? (
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {data.weak_concepts.map((c: string) => (
+                                                        <Badge key={c} variant="secondary" className="text-xs">
+                                                            {c}
+                                                        </Badge>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-muted-foreground">
+                                                    No weak concepts identified yet.
+                                                </p>
+                                            )}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            );
+                        })}
+                    </div>
+
+                    <Card>
+                        {/* NEW: Refresh Button added to Header */}
+                        <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle>Progress Over Time</CardTitle>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => fetchLogs(true)}
+                                disabled={isRefreshing}
+                            >
+                                <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                                Sync Data
+                            </Button>
+                        </CardHeader>
+                        <CardContent>
+                            {progressData.length > 0 ? (
+                                <div className="space-y-4">
+                                    <ChartContainer config={chartConfig} className="h-[350px] w-full">
+                                        <LineChart data={currentBatchData}>
+                                            {/* <CartesianGrid strokeDasharray="3 3" className="stroke-border" /> */}
+
+                                            {currentBatchData.map((dataPoint) => {
+                                                // Extract the number from "Q10", "Q20", etc.
+                                                const qNum = parseInt(dataPoint.quiz.replace("Q", ""));
+                                                if (qNum % 10 === 0) {
+                                                    return (
+                                                        <ReferenceLine
+                                                            key={dataPoint.quiz}
+                                                            x={dataPoint.quiz}
+                                                            stroke="hsl(var(--muted-foreground))"
+                                                            strokeDasharray="4 4"
+                                                            opacity={0.5}
+                                                        />
+                                                    );
+                                                }
+                                                return null;
+                                            })}
+
+                                            <XAxis dataKey="quiz" tick={{ fontSize: 12 }} />
+                                            <YAxis domain={[0, 1]} tick={{ fontSize: 12 }} tickFormatter={(v) => `${Math.round(v * 100)}%`} />
+                                            <ChartTooltip
+                                                content={
+                                                    <ChartTooltipContent
+                                                        indicator="dot"
+                                                        hideLabel={false}
+                                                        formatter={(value, name) => (
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-bold">
+                                                                    {Math.round(Number(value) * 100)}%:
+                                                                </span>
+                                                                <span className="font-medium text-foreground">
+                                                                    {chartConfig[name as keyof typeof chartConfig]?.label || name}
+                                                                </span>
+                                                            </div>
+                                                        )}
                                                     />
-                                                );
-                                            }
-                                            return null;
-                                        })}
+                                                }
+                                            />
+                                            <ChartLegend content={<ChartLegendContent />} />
+                                            <Line isAnimationActive={false} type="monotone" dataKey="Biology" stroke="var(--color-Biology)" strokeWidth={2} dot={true} />
+                                            <Line isAnimationActive={false} type="monotone" dataKey="Chemistry" stroke="var(--color-Chemistry)" strokeWidth={2} dot={true} />
+                                            <Line isAnimationActive={false} type="monotone" dataKey="Physics" stroke="var(--color-Physics)" strokeWidth={2} dot={true} />
+                                            <Line isAnimationActive={false} type="monotone" dataKey="generalScience" stroke="var(--color-generalScience)" strokeWidth={2} dot={true} />
+                                        </LineChart>
+                                    </ChartContainer>
 
-                                        <XAxis dataKey="quiz" tick={{ fontSize: 12 }} />
-                                        <YAxis domain={[0, 1]} tick={{ fontSize: 12 }} tickFormatter={(v) => `${Math.round(v * 100)}%`} />
-                                        <ChartTooltip
-                                            content={
-                                                <ChartTooltipContent
-                                                    indicator="dot"
-                                                    hideLabel={false}
-                                                    formatter={(value, name) => (
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-bold">
-                                                                {Math.round(Number(value) * 100)}%:
-                                                            </span>
-                                                            <span className="font-medium text-foreground">
-                                                                {chartConfig[name as keyof typeof chartConfig]?.label || name}
-                                                            </span>
-                                                        </div>
-                                                    )}
-                                                />
-                                            }
-                                        />
-                                        <ChartLegend content={<ChartLegendContent />} />
-                                        <Line type="monotone" dataKey="Biology" stroke="var(--color-Biology)" strokeWidth={2} dot={true} />
-                                        <Line type="monotone" dataKey="Chemistry" stroke="var(--color-Chemistry)" strokeWidth={2} dot={true} />
-                                        <Line type="monotone" dataKey="Physics" stroke="var(--color-Physics)" strokeWidth={2} dot={true} />
-                                        <Line type="monotone" dataKey="generalScience" stroke="var(--color-generalScience)" strokeWidth={2} dot={true} />
-                                    </LineChart>
-                                </ChartContainer>
-
-                                <div className="flex items-center justify-between pt-4 border-t">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                                        disabled={currentPage === 1}
-                                    >
-                                        <ChevronLeft className="h-4 w-4 mr-1" /> Prev Batch
-                                    </Button>
-                                    <span className="text-sm text-muted-foreground font-medium">
-                                        Batch {currentPage} of {totalPages}
-                                    </span>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                                        disabled={currentPage === totalPages}
-                                    >
-                                        Next Batch <ChevronRight className="h-4 w-4 ml-1" />
-                                    </Button>
+                                    <div className="flex items-center justify-between pt-4 border-t">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                            disabled={currentPage === 1}
+                                        >
+                                            <ChevronLeft className="h-4 w-4 mr-1" /> Prev Batch
+                                        </Button>
+                                        <span className="text-sm text-muted-foreground font-medium">
+                                            Batch {currentPage} of {totalPages}
+                                        </span>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                                            disabled={currentPage === totalPages}
+                                        >
+                                            Next Batch <ChevronRight className="h-4 w-4 ml-1" />
+                                        </Button>
+                                    </div>
                                 </div>
-                            </div>
-                        ) : (
-                            <div className="h-[350px] flex items-center justify-center text-muted-foreground">
-                                No quiz history available yet.
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                            ) : (
+                                <div className="h-[350px] flex items-center justify-center text-muted-foreground">
+                                    No quiz history available yet.
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* NEW: Batch Question History */}
+                    {currentBatchData.length > 0 && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-xl">Batch {currentPage} Review History</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                {currentBatchData.map((log) => (
+                                    <div
+                                        key={log._id}
+                                        className={`p-4 rounded-lg border-l-4 border transition-colors ${log.isCorrect
+                                            ? 'border-l-success bg-success/5 border-success/20'
+                                            : 'border-l-destructive bg-destructive/5 border-destructive/20'
+                                            }`}
+                                    >
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="space-y-2">
+                                                {/* Meta Tags */}
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <Badge variant="outline" className="bg-background">{log.augmented?.subtopic}</Badge>
+                                                    <Badge variant="secondary" className={`bg-background text-xs font-normal ${log.augemented?.difficulty === "Easy" ? "bg-green-600 hover:bg-green-600 text-white font-bold" :
+                                                        log.augmented?.difficulty === "Medium" ? "bg-[#f97415] hover:bg-[#f97415] text-white font-bold" :
+                                                            log.augmented?.difficulty === "Hard" ? "bg-red-500 hover:bg-red-500 text-white font-bold" :
+                                                                "text-muted-foreground"
+                                                        }`}
+                                                    >
+                                                        {log.augmented?.difficulty}</Badge>
+                                                    <Badge variant="secondary" className={`text-xs font-bold bg-white hover:bg-white ${log.augmented?.bloom_taxonomy === "Remembering" ? "text-green-600" :
+                                                        log.augmented?.bloom_taxonomy === "Understanding" ? "text-[#f97415]" :
+                                                            log.augmented?.bloom_taxonomy === "Applying" ? "text-destructive" :
+                                                                "text-muted-foreground"
+                                                        }`}
+                                                    >{log.augmented?.bloom_taxonomy}</Badge>
+                                                </div>
+
+
+                                                {/* Question Text */}
+                                                <p className="font-medium text-foreground text-sm leading-relaxed">
+                                                    {log.augmented?.question}
+                                                </p>
+
+                                                {/* Answer Details */}
+                                                <div className="pt-2">
+                                                    <p className="text-sm text-muted-foreground">
+                                                        <span className="font-semibold text-foreground">Correct Answer: </span>
+                                                        {log.augmented?.answer}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            {/* Result Icon Indicator */}
+                                            <div className="shrink-0 mt-1">
+                                                {log.isCorrect ? (
+                                                    <div className="flex items-center text-success gap-1.5 text-sm font-bold">
+                                                        <CheckCircle2 className="h-5 w-5" />
+                                                        <span className="hidden sm:inline">Correct</span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center text-destructive gap-1.5 text-sm font-bold">
+                                                        <XCircle className="h-5 w-5" />
+                                                        <span className="hidden sm:inline">Incorrect</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </CardContent>
+                        </Card>
+                    )}
+                </div>
             </div>
-        </div>
+        </div >
     );
 };
 

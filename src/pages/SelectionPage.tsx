@@ -10,7 +10,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Zap, PlayCircle, Lock, LogOut } from "lucide-react";
+import { Zap, PlayCircle, LogOut, Database, Shield, BookOpen, UserCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -20,9 +20,12 @@ const SelectionPage = () => {
     const { user, role, logout, token } = useAuth();
     const navigate = useNavigate();
     const { toast } = useToast();
+
+    // Dropdown states for Admin testing
     const [easy, setEasy] = useState("");
     const [medium, setMedium] = useState("");
     const [hard, setHard] = useState("");
+    const [width] = useState(() => window.innerWidth);
 
     useEffect(() => {
         if (!token) {
@@ -32,12 +35,13 @@ const SelectionPage = () => {
             });
             navigate("/");
         }
-    }, [token, navigate]);
+    }, [token, navigate, toast]);
+
     if (!token) return null;
 
+    const isAdmin = role === "admin";
+    // We assume any logged-in user who reaches here can take the normal quiz
     const canStartQuiz = role === "admin" || role === "regular";
-    const canFreeTrial = role === "admin" || role === "regular" || role === "free_trial";
-    const canAccessFilters = canFreeTrial; // Admin only can use the bottom 3 dropdowns
 
     const handleStartQuiz = () => {
         if (!canStartQuiz) return;
@@ -47,10 +51,8 @@ const SelectionPage = () => {
         });
     };
 
-    const handleFreeTrial = () => {
-        if (!canFreeTrial) return;
-
-        // 1. Figure out which difficulty and subject the user picked
+    // Previously "handleFreeTrial" - now strictly an Admin testing tool
+    const handleAdminTestQuiz = () => {
         let selectedDifficulty = "";
         let selectedSubject = "";
 
@@ -65,29 +67,26 @@ const SelectionPage = () => {
             selectedSubject = hard;
         }
 
-        // Optional: Stop the user if they didn't pick anything
         if (!selectedSubject) {
             toast({
                 title: "Selection Required",
-                description: "Please select a subject and difficulty for the trial.",
+                description: "Please select a subject and difficulty to run a test.",
                 variant: "destructive"
             });
             return;
         }
 
         toast({
-            title: "Free Trial",
+            title: "Admin Test Run",
             description: `Loading ${selectedDifficulty} ${selectedSubject} questions...`
         });
 
-        // 2. Build the dynamic URL query string safely
         const queryParams = new URLSearchParams({
             mode: "trial",
             difficulty: selectedDifficulty,
             subject: selectedSubject
         }).toString();
 
-        // Result looks like: /quiz?mode=trial&difficulty=easy&subject=chemistry
         navigate(`/quiz?${queryParams}`, {
             state: {
                 started: true,
@@ -102,109 +101,130 @@ const SelectionPage = () => {
         navigate("/");
     };
 
-    const handleProfile = () => navigate("/profile")
-
-    if (!token) return null;
+    const handleProfile = () => navigate("/profile");
 
     return (
         <div className="flex min-h-screen items-center justify-center bg-background p-4">
             <Card className="w-full max-w-lg shadow-xl border-border/50">
-                <CardHeader className="text-center space-y-2">
+
+                {/* --- HEADER (Visible to Everyone) --- */}
+                <CardHeader className="text-center space-y-2 pb-4">
                     <div className="flex items-center justify-between">
-                        <Button variant="ghost" size="sm" onClick={handleProfile} className="text-sm text-muted-foreground hover:bg-emerald-300 hover:cursor-pointer">
-                            Hi, <span className="font-semibold text-foreground uppercase">{user}</span>{" "}
-                            <span className="inline-block rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent capitalize">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleProfile}
+                            className="text-sm text-muted-foreground hover:bg-emerald-500/10 hover:text-emerald-600 transition-colors"
+                        >{width > 600
+                            ? (
+                                <>
+                                    Hi, <span className="font-semibold text-foreground uppercase mx-1">{user}</span>
+                                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium capitalize ${isAdmin ? 'bg-destructive/15 text-destructive' : 'bg-accent/15 text-accent'}`}>
+                                        {role?.replace("_", " ")}
+                                    </span>
+                                </>
+                            ) : (
+                                <><UserCircle className="h-3.5 w-3.5" />Profile</>
+                            )}
+                        </Button>
+                        {width <= 600 && (
+                            <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium capitalize ${isAdmin ? 'bg-destructive/15 text-destructive' : 'bg-accent/15 text-accent'}`}>
                                 {role?.replace("_", " ")}
                             </span>
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-1 text-muted-foreground hover:cursor-pointer">
-                            <LogOut className="h-3.5 w-3.5" /> Logout
+                        )}
+                        <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-1 text-muted-foreground">
+                            Logout <LogOut className="h-3.5 w-3.5" />
                         </Button>
                     </div>
-                    <CardTitle className="text-2xl font-bold text-foreground">Select Your Quiz</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                    {/* Action Buttons */}
-                    <div className="grid grid-cols-2 gap-4">
+
+                <CardContent className="space-y-8">
+
+                    {/* --- STUDENT CONSOLE (Visible to Everyone) --- */}
+                    <div className="space-y-6">
+                        <div className="text-center space-y-1">
+                            <CardTitle className="text-2xl font-bold text-foreground">Adaptive Reviewer</CardTitle>
+                            <p className="text-sm text-muted-foreground">Ready to test your knowledge?</p>
+                        </div>
+
                         <Button
-                            variant="secondary"
-                            className="h-20 text-lg gap-2 relative"
-                            disabled={!canFreeTrial}
-                            onClick={handleFreeTrial}
-                        >
-                            {!canFreeTrial && <Lock className="absolute top-2 right-2 h-3.5 w-3.5 text-muted-foreground" />}
-                            <Zap className="h-5 w-5" />
-                            Free Trial
-                        </Button>
-                        <Button
-                            className="h-20 text-lg gap-2 relative"
+                            className="w-full h-20 text-lg gap-3 shadow-md transition-transform active:scale-[0.98]"
                             disabled={!canStartQuiz}
                             onClick={handleStartQuiz}
                         >
-                            {!canStartQuiz && <Lock className="absolute top-2 right-2 h-3.5 w-3.5 text-muted-foreground" />}
-                            <PlayCircle className="h-5 w-5" />
-                            Start Quiz
+                            <PlayCircle className="h-6 w-6" />
+                            Start Adaptive Quiz
                         </Button>
                     </div>
 
-                    {/* Difficulty Dropdowns - Locked for non-admins */}
-                    {/* Difficulty Dropdowns - Locked for non-admins */}
-                    <div className={`grid grid-cols-3 gap-3 transition-opacity ${!canAccessFilters ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-                        {[
-                            {
-                                label: "Easy",
-                                value: easy,
-                                onChange: (val: string) => {
-                                    setEasy(val === "null" ? "" : val);
-                                    setMedium("");
-                                    setHard("");
-                                }
-                            },
-                            {
-                                label: "Medium",
-                                value: medium,
-                                onChange: (val: string) => {
-                                    setMedium(val === "null" ? "" : val);
-                                    setEasy("");
-                                    setHard("");
-                                }
-                            },
-                            {
-                                label: "Hard",
-                                value: hard,
-                                onChange: (val: string) => {
-                                    setHard(val === "null" ? "" : val);
-                                    setEasy("");
-                                    setMedium("");
-                                }
-                            },
-                        ].map(({ label, value, onChange }) => (
-                            <div key={label} className="space-y-2">
-                                {/* ... rest of your label mapping remains exactly the same ... */}
-                                <div className="flex items-center gap-1">
-                                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                                        {label}
-                                    </Label>
-                                    {!canAccessFilters && <Lock className="h-2.5 w-2.5 text-muted-foreground" />}
+                    {/* --- ADMIN CONSOLE (Visible only to Admins) --- */}
+                    {isAdmin && (
+                        <div className="pt-6 border-t border-border/60 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div className="flex items-center gap-2">
+                                <Shield className="h-5 w-5 text-destructive" />
+                                <h3 className="text-lg font-bold text-foreground tracking-tight">Admin Console</h3>
+                            </div>
+
+                            {/* Admin Actions */}
+                            <Button
+                                variant="outline"
+                                className="w-full h-12 gap-2 justify-start px-4"
+                                onClick={() => navigate("/knowledge_base")}
+                            >
+                                <Database className="h-4 w-4 text-primary" />
+                                Knowledge Base Explorer
+                            </Button>
+
+                            {/* Test Configuration */}
+                            <div className="space-y-4 p-4 bg-muted/30 rounded-lg border border-border/50">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <BookOpen className="h-4 w-4 text-muted-foreground" />
+                                    <Label className="font-semibold text-foreground">Test Specific Configuration</Label>
                                 </div>
 
-                                <Select value={value} onValueChange={onChange} disabled={!canAccessFilters}>
-                                    <SelectTrigger className="h-9">
-                                        <SelectValue placeholder="Subject" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem key="Subject" value="null">Subject</SelectItem>
-                                        {subjects.map((s) => (
-                                            <SelectItem key={s} value={s}>
-                                                {s}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        ))}
-                    </div>
+                                <div className="grid grid-cols-3 gap-3">
+                                    {[
+                                        { label: "Easy", value: easy, setter: setEasy, clear: [setMedium, setHard] },
+                                        { label: "Medium", value: medium, setter: setMedium, clear: [setEasy, setHard] },
+                                        { label: "Hard", value: hard, setter: setHard, clear: [setEasy, setMedium] },
+                                    ].map(({ label, value, setter, clear }) => (
+                                        <div key={label} className="space-y-2">
+                                            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                                {label}
+                                            </Label>
+                                            <Select
+                                                value={value}
+                                                onValueChange={(val) => {
+                                                    setter(val === "null" ? "" : val);
+                                                    clear[0]("");
+                                                    clear[1]("");
+                                                }}
+                                            >
+                                                <SelectTrigger className="h-9 bg-background">
+                                                    <SelectValue placeholder="Subject" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="null">Subject</SelectItem>
+                                                    {subjects.map((s) => (
+                                                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    ))}
+                                </div>
 
+                                <Button
+                                    variant="secondary"
+                                    className="w-full mt-4 gap-2 border border-border/50"
+                                    onClick={handleAdminTestQuiz}
+                                >
+                                    <Zap className="h-4 w-4" />
+                                    Run Trial Quiz
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
         </div>
@@ -212,4 +232,3 @@ const SelectionPage = () => {
 };
 
 export default SelectionPage;
-

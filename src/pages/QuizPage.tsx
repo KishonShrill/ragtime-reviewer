@@ -52,6 +52,7 @@ const QuizPage = () => {
     const mode = searchParams.get("mode")
     const trialDifficulty = searchParams.get("difficulty");
     const trialSubject = searchParams.get("subject");
+    const trialQuestionId = searchParams.get("question_id");
     const isTrial = mode === "trial";
 
     const [showFallback, setShowFallback] = useState(false);
@@ -125,17 +126,22 @@ const QuizPage = () => {
 
         const requestPayload = isTrial
             ? {
-                subject: trialSubject,
-                difficulty: trialDifficulty,
-                is_trial: true
+                is_trial: true,
+                question_id: trialQuestionId, // Passes the exact ID if available
+                subject: trialSubject,        // Fallbacks for the Selection dropdowns
+                difficulty: trialDifficulty
             }
             : {
                 scores: scoresToUse,
                 current_index: currentIndex,
             };
 
+        const endpoint = isTrial ? "/api/ai/trial" : "/api/ai/question";
+        console.log(`${backendUrl}${endpoint}`)
+        console.log(requestPayload)
+
         return ResultAsync.fromPromise(
-            fetch(`${backendUrl}/api/ai/question`, {
+            fetch(`${backendUrl}${endpoint}`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -181,6 +187,7 @@ const QuizPage = () => {
 
                 // 2. Attach the image from the original seed query
                 aiQuestion.image = data.queries?.image || null;
+                aiQuestion.description = data.queries?.description || null;
                 console.log(aiQuestion.image)
 
                 // 3. Check for the mock fallback error and pass it to the component
@@ -188,7 +195,7 @@ const QuizPage = () => {
                     aiQuestion.isMock = true;
                     aiQuestion.mockMessage = data.result.error;
                 }
-
+                console.log(aiQuestion)
                 // console.log({ aiQuestion })
                 return okAsync(aiQuestion);
             });
@@ -447,7 +454,7 @@ const QuizPage = () => {
                     <CardTitle className="text-xl font-bold text-foreground">{question.question}</CardTitle>
 
                     {/* NEW: Question Metadata Badges */}
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <div id="metadata" className="flex flex-wrap items-center gap-2 pt-1">
                         {question.subtopic && (
                             <Badge
                                 variant="secondary"
