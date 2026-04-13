@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, XCircle, ArrowLeft, Trophy } from "lucide-react";
 import { ResultAsync, errAsync, okAsync } from "neverthrow";
@@ -51,6 +52,7 @@ const QuizPage = () => {
     const mode = searchParams.get("mode")
     const trialDifficulty = searchParams.get("difficulty");
     const trialSubject = searchParams.get("subject");
+    const trialQuestionId = searchParams.get("question_id");
     const isTrial = mode === "trial";
 
     const [showFallback, setShowFallback] = useState(false);
@@ -118,35 +120,28 @@ const QuizPage = () => {
     const fetchQuestion = (overrideScores?: typeof knowledgeScores, targetIndex?: number) => {
         const scoresToUse = overrideScores || knowledgeScores;
         const actualIndex = targetIndex !== undefined ? targetIndex : currentIndex;
-        const getSubjectForQuestion = (index: number): string => {
-            if (index < 10) return "General Science";
-            if (index < 20) return "Biology";
-            if (index < 30) return "Chemistry";
-            if (index < 40) return "Physics";
-
-            // For index 40 to 49 (the final batch), pick randomly
-            const subjects = ["General Science", "Biology", "Chemistry", "Physics"];
-            const randomIndex = Math.floor(Math.random() * subjects.length);
-            return subjects[randomIndex];
-        };
-        const subjectToUse = getSubjectForQuestion(actualIndex);
-        console.log(`${actualIndex}. ${subjectToUse}`)
+        console.log(`${actualIndex}. Question`)
 
         // console.log("Fetching with scores:", JSON.stringify(scoresToUse));
 
         const requestPayload = isTrial
             ? {
-                subject: trialSubject,
-                difficulty: trialDifficulty,
-                is_trial: true
+                is_trial: true,
+                question_id: trialQuestionId, // Passes the exact ID if available
+                subject: trialSubject,        // Fallbacks for the Selection dropdowns
+                difficulty: trialDifficulty
             }
             : {
                 scores: scoresToUse,
-                subject: subjectToUse
+                current_index: currentIndex,
             };
 
+        const endpoint = isTrial ? "/api/ai/trial" : "/api/ai/question";
+        console.log(`${backendUrl}${endpoint}`)
+        console.log(requestPayload)
+
         return ResultAsync.fromPromise(
-            fetch(`${backendUrl}/api/ai/question`, {
+            fetch(`${backendUrl}${endpoint}`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -192,13 +187,15 @@ const QuizPage = () => {
 
                 // 2. Attach the image from the original seed query
                 aiQuestion.image = data.queries?.image || null;
+                aiQuestion.description = data.queries?.description || null;
+                console.log(aiQuestion.image)
 
                 // 3. Check for the mock fallback error and pass it to the component
                 if (data.result.error) {
                     aiQuestion.isMock = true;
                     aiQuestion.mockMessage = data.result.error;
                 }
-
+                console.log(aiQuestion)
                 // console.log({ aiQuestion })
                 return okAsync(aiQuestion);
             });
@@ -451,17 +448,46 @@ const QuizPage = () => {
                     {question.description && (
                         <p className="text-sm text-muted-foreground italic">{question.description}</p>
                     )}
-                    {question.image && (
-                        <img
-                            src={question.image}
-                            alt="Question illustration"
-                            className="w-full h-48 object-cover rounded-lg"
-                        />
-                    )}
                     {question.image && question.image.length > 0 && (
                         <QuizImageViewer images={question.image.split(",")} />
                     )}
                     <CardTitle className="text-xl font-bold text-foreground">{question.question}</CardTitle>
+
+                    {/* NEW: Question Metadata Badges */}
+                    <div id="metadata" className="flex flex-wrap items-center gap-2 pt-1">
+                        {question.subtopic && (
+                            <Badge
+                                variant="secondary"
+                                className={`text-xs font-bold`}
+                            >
+                                {question.subtopic}
+                            </Badge>
+                        )}
+                        {question.difficulty && (
+                            <Badge
+                                variant="outline"
+                                className={`text-xs font-normal ${question.difficulty === "Easy" ? "bg-green-600 text-white font-bold" :
+                                    question.difficulty === "Medium" ? "bg-[#f97415] text-white font-bold" :
+                                        question.difficulty === "Hard" ? "bg-red-500 text-white font-bold" :
+                                            "text-muted-foreground"
+                                    }`}
+                            >
+                                {question.difficulty}
+                            </Badge>
+                        )}
+                        {question.bloom_taxonomy && (
+                            <Badge
+                                variant="outline"
+                                className={`text-xs font-bold ${question.bloom_taxonomy === "Remembering" ? "text-green-600" :
+                                    question.bloom_taxonomy === "Understanding" ? "text-[#f97415]" :
+                                        question.bloom_taxonomy === "Applying" ? "text-destructive" :
+                                            "text-muted-foreground"
+                                    }`}
+                            >
+                                {question.bloom_taxonomy}
+                            </Badge>
+                        )}
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-1 gap-3">
@@ -500,7 +526,7 @@ const QuizPage = () => {
                     </div>
                 </CardContent>
             </Card>
-        </div>
+        </div >
     );
 };
 

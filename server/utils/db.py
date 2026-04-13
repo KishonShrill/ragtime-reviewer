@@ -145,7 +145,7 @@ def get_logs_count(user: User) -> int:
 
 def get_scores_of_user(user: User) -> dict[str,Any]:
     try:
-        cursor = logs.find({"user": user.username}, {"knowledge_base": 0, "augmented": 0}).sort("timestamp", 1)
+        cursor = logs.find({"user": user.username}, {"knowledge_base": 0}).sort("timestamp", 1)
         logs_list = list(cursor)
         
         for log in logs_list:
@@ -188,7 +188,8 @@ def get_question(query_fields: LogicEngineResponse, excluded_ids: Optional[list[
             subtopic = raw_data.get("subtopic"),
             difficulty = raw_data.get("difficulty"),
             bloom_taxonomy = raw_data.get("bloom_taxonomy"),
-            image=raw_data.get("image")
+            image=raw_data.get("image"),
+            description=raw_data.get("description")
         )
     except IndexError:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Error",
@@ -197,3 +198,46 @@ def get_question(query_fields: LogicEngineResponse, excluded_ids: Optional[list[
         print(e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
                                                                                        "reason": "Cannot fetch question, database is down..."})
+
+
+def get_specific_question(question_id: str) -> QuestionResponse:
+    try:
+        raw_data = knowledge_base.find_one({"question_id": question_id})
+        
+        if not raw_data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"title": "Not Found", "reason": "That question ID no longer exists."})
+
+        return QuestionResponse(
+            question_id = raw_data.get("question_id"),
+            question = raw_data.get("question"),
+            answer = raw_data.get("answer"),
+            subtopic = raw_data.get("subtopic"),
+            difficulty = raw_data.get("difficulty"),
+            bloom_taxonomy = raw_data.get("bloom_taxonomy"),
+            image = raw_data.get("image"),
+            description=raw_data.get("description")
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error", "reason": "Cannot fetch specific question."})
+
+
+def get_all_knowledge_base() -> dict[str, Any]:
+    try:
+        # Fetch all documents. {"_id": 0} explicitly removes the unserializable ObjectId.
+        cursor = knowledge_base.find({}, {"_id": 0})
+        questions_list = list(cursor)
+        
+        return {"status": "success", "data": questions_list}
+        
+    except Exception as e:
+        print(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail={
+                "title": "MongoDB Connection Error",
+                "reason": "Cannot fetch knowledge base from database..."
+            }
+        )

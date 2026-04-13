@@ -4,7 +4,22 @@ import numpy as np
 
 rng = np.random.default_rng()
 
-def prepare_next_question(request: QuestionRequest) -> LogicEngineResponse:
+
+def get_subject_for_question(index: int) -> str:
+    if index < 10:
+        return "General Science"
+    if index < 20:
+        return "Biology"
+    if index < 30:
+        return "Chemistry"
+    if index < 40:
+        return "Physics"
+    
+    # For index 40 to 49 (the final batch), pick randomly
+    subjects = ["General Science", "Biology", "Chemistry", "Physics"]
+    return rng.choice(subjects)
+
+def prepare_next_question(request: QuestionRequest, log_count: int) -> LogicEngineResponse:
     """
     Determines the difficulty and Bloom's level for the next question 
     based on the learner's knowledge state vector.
@@ -12,7 +27,7 @@ def prepare_next_question(request: QuestionRequest) -> LogicEngineResponse:
     # 1. Get the specific knowledge object for the chosen subject
     difficulty: str = ""
     bloom: str = ""
-    subject = request.subject
+    subject = get_subject_for_question(log_count % 50) if request.is_trial is not True else request.subject
 
     # --- BRANCH 1: TRIAL MODE ---
     if request.is_trial and request.difficulty:

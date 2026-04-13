@@ -17,8 +17,8 @@ USER_DB: dict[str | None,str] = {
 
 
 @router.get("/me")
-def me(user: Annotated[dict[str,str], Depends(dependency=user_required)]) -> dict[str,str]:
-    return user 
+def me(user: Annotated[dict[str,str], Depends(dependency=user_required)]) -> User:
+    return user
 
 @router.post("/signup")
 async def signup(request: SignupRequest) -> User: 
