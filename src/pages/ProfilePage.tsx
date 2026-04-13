@@ -18,7 +18,6 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { ResultAsync, errAsync, okAsync } from "neverthrow";
-import html2canvas from "html2canvas";
 import { toPng } from 'html-to-image'
 import jsPDF from "jspdf";
 

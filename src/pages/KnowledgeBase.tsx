@@ -137,11 +137,10 @@ const KnowledgeBasePage = () => {
     useEffect(() => {
         if (isError && error) {
             // Type assertion because we threw our custom Neverthrow object
-            const err = error as { title: string; reason: string };
             toast({
                 variant: "destructive",
-                title: err.title || "Error",
-                description: err.reason || "Failed to load knowledge base."
+                title: "Error",
+                description: "Failed to load knowledge base."
             });
         }
     }, [isError, error, toast]);
@@ -225,8 +224,8 @@ const KnowledgeBasePage = () => {
                                                     <TableRow key={item.question_id}>
                                                         {/* Icons for Image/Description */}
                                                         <TableCell className="flex gap-2">
-                                                            {item.image && <ImageIcon className="h-4 w-4 text-primary" title="Contains Image" />}
-                                                            {item.description && <AlignLeft className="h-4 w-4 text-muted-foreground" title="Contains Description" />}
+                                                            {item.image && <ImageIcon className="h-4 w-4 text-primary" />}
+                                                            {item.description && <AlignLeft className="h-4 w-4 text-muted-foreground" />}
                                                         </TableCell>
 
                                                         {/* Question Text */}
