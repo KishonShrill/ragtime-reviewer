@@ -10,7 +10,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Zap, PlayCircle, LogOut, Database, Shield, BookOpen, UserCircle } from "lucide-react";
+import { Zap, PlayCircle, LogOut, Database, Shield, BookOpen, UserCircle, FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -166,14 +166,26 @@ const SelectionPage = () => {
                             </div>
 
                             {/* Admin Actions */}
-                            <Button
-                                variant="outline"
-                                className="w-full h-12 gap-2 justify-start px-4"
-                                onClick={() => navigate("/knowledge_base")}
-                            >
-                                <Database className="h-4 w-4 text-primary" />
-                                Knowledge Base Explorer
-                            </Button>
+                            <div className="flex gap-4">
+                                <Button
+                                    variant="outline"
+                                    className="w-full h-12 gap-2 justify-start px-4"
+                                    onClick={() => navigate("/knowledge_base")}
+                                >
+                                    <Database className="h-4 w-4 text-primary" />
+                                    Knowledge Base Explorer
+                                </Button>
+
+                                {/* NEW: SME Validation Generator Button */}
+                                <Button
+                                    variant="outline"
+                                    className="w-full h-12 gap-2 justify-start px-4"
+                                    onClick={() => navigate("/sme-validation")}
+                                >
+                                    <FileText className="h-4 w-4 text-primary" />
+                                    SME Validation Generator
+                                </Button>
+                            </div>
 
                             {/* Test Configuration */}
                             <div className="space-y-4 p-4 bg-muted/30 rounded-lg border border-border/50">

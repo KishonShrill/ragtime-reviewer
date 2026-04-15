@@ -4,7 +4,8 @@ import json
 import numpy as np
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
-import ollama  # Make sure ollama is running in the background!
+import ollama  # Make sure ollama is running in the background
+from collections import defaultdict
 
 rng = np.random.default_rng()
 
@@ -76,40 +77,52 @@ def generate_rag_variation(seed_item):
         }
 
 def generate_balanced_review_sheet():
-    print("1. Fetching a balanced sample from the Knowledge Base...")
+    print("1. Fetching valid questions from the Knowledge Base...")
 
+    # We only use MongoDB to filter out the excluded categories
     pipeline = [
-        { "$match": { "$nor": [ {"bloom_taxonomy": "Remembering", "difficulty": "Easy"}, {"bloom_taxonomy": "Applying", "difficulty": "Easy"} ] } },
-        { "$group": { "_id": { "subtopic": "$subtopic", "bloom_taxonomy": "$bloom_taxonomy", "difficulty": "$difficulty" }, "questions": { "$push": "$$ROOT" } } },
-        { "$project": { "sampled_questions": { "$slice": ["$questions", QUESTIONS_PER_CATEGORY] } } },
-        { "$unwind": "$sampled_questions" },
-        { "$replaceRoot": { "newRoot": "$sampled_questions" } }
-        # { "$sort": { "subtopic": 1, "bloom_taxonomy": 1, "difficulty": 1 } }
+        { "$match": { "$nor": [ {"bloom_taxonomy": "Remembering", "difficulty": "Easy"}, {"bloom_taxonomy": "Applying", "difficulty": "Easy"} ] } }
     ]
+    
+    all_valid_questions = list(knowledge_base.aggregate(pipeline))
 
-    balanced_questions = list(knowledge_base.aggregate(pipeline))
+    # --- NEW: TRULY RANDOM GROUPING IN PYTHON ---
+    print("2. Shuffling and categorizing questions...")
+    grouped_questions = defaultdict(list)
+    
+    # Group every question into its specific category bucket
+    for q in all_valid_questions:
+        key = (q.get("subtopic"), q.get("bloom_taxonomy"), q.get("difficulty"))
+        grouped_questions[key].append(q)
 
-    # --- NEW: STRICT 50 LOGIC ---
+    balanced_questions = []
+    
+    # Randomly pick 2 from every single bucket
+    for key, group in grouped_questions.items():
+        sample_size = min(len(group), QUESTIONS_PER_CATEGORY)
+        sampled = rng.choice(group, sample_size) # True random pick!
+        balanced_questions.extend(sampled)
+
+    # --- NUMPY STRICT 50 LOGIC ---
     if len(balanced_questions) > 50:
-        print(f"   Fetched {len(balanced_questions)} questions. Shaving randomly down to exactly 50...")
-        random_indices = rng.choice(len(balanced_questions), size=50, replace=False)
-
+        print(f"   Fetched {len(balanced_questions)} balanced questions. Shaving randomly to exactly 50...")
+        random_indices = np.random.choice(len(balanced_questions), size=50, replace=False)
         balanced_questions = [balanced_questions[i] for i in random_indices]
-
+        
     # Sort them nicely for the professors after the random shave
     balanced_questions.sort(key=lambda x: (x.get("subtopic", ""), x.get("bloom_taxonomy", ""), x.get("difficulty", "")))
     # ----------------------------
 
-    filename = "rag_sme_validation_sheet_50.csv"
+    filename = "rag_sme_validation_sheet_strict_50.csv"
     
-    print(f"2. Generating RAG variations for {len(balanced_questions)} questions. This might take a minute...")
+    print(f"3. Generating RAG variations for exactly {len(balanced_questions)} questions. This might take a minute...")
 
     with open(filename, mode='w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
         
-        # Write the headers with the new SME evaluation columns
         writer.writerow([
             "Question ID", 
+            "Image", 
             "Subtopic", 
             "Bloom's", 
             "Difficulty", 
@@ -125,25 +138,24 @@ def generate_balanced_review_sheet():
         for i, q in enumerate(balanced_questions, 1):
             print(f"   Processing {i}/{len(balanced_questions)}: {q.get('question_id')}")
             
-            # Ask Ollama to generate the variation
-            rag_output = generate_rag_variation(q)
+            rag_output = generate_rag_variation(q) 
             
-            # Format options nicely for Excel
             options_list = rag_output.get("options", [])
             formatted_options = "\n".join([f"- {opt}" for opt in options_list]) if isinstance(options_list, list) else str(options_list)
 
             writer.writerow([
                 q.get("question_id", ""),
+                q.get("image", ""),
                 q.get("subtopic", ""),
                 q.get("bloom_taxonomy", ""),
                 q.get("difficulty", ""),
                 q.get("question", ""),
-                rag_output.get("question", ""), # The LLM variation
+                rag_output.get("question", ""), 
                 q.get("answer", ""),
-                formatted_options, # The LLM options
-                "", # Blank for Professor
-                "", # Blank for Professor
-                ""  # Blank for Professor
+                formatted_options, 
+                "", 
+                "", 
+                ""  
             ])
 
     print(f"✅ Successfully exported and generated {filename}!")
