@@ -114,32 +114,72 @@ async def get_rag_question(
             }
         }
 
+    # --- THE SMART SAFETY SHUFFLE & DEDUPLICATION ---
     try:
         response_dict = clean_result.get("response", {})
-        options = response_dict.get("options", [])
+        raw_options = response_dict.get("options", [])
         answer = response_dict.get("answer")
-        
-        if isinstance(options, list) and answer:
-            # 1. SAFETY CHECK: Ensure the exact answer string is inside the options list
-            if answer not in options:
-                print("⚠️ Warning: Answer was missing from options. Injecting manually.")
-                
-                # If the LLM gave us 4 or more options, replace the last one so we don't end up with 5 options
-                if len(options) >= 4:
-                    options[-1] = answer
-                else:
-                    # If it gave us fewer than 4, just append it
-                    options.append(answer)
 
-            # 2. SHUFFLE: Randomize the order so the injected answer isn't always last
-            rng.shuffle(options)
+        # Smart helper to distinguish plain text from scientific formulas
+        def is_text_duplicate(a: str, b: str) -> bool:
+            if a == b: return True # Exact match = duplicate
+            if a.lower() != b.lower(): return False # Completely different = keep both
             
-            # 3. REASSIGN: Save the cleaned and shuffled options back to the dictionary
-            clean_result["response"]["options"] = options
+            # AT THIS POINT: They only differ by capitalization.
+            
+            # Rule A: Keep short formulas/symbols (e.g., "Co" vs "CO")
+            if len(a) <= 2: return False 
+            
+            # Rule B: Keep equations/units (e.g., "10 Mg", "C₆H₁₂O₄ + 7O₂")
+            if re.search(r'[0-9\+\-\=\>\<\→\(\)\[\]]', a): return False 
+            
+            # Rule C: Keep Acronyms, Genotypes, and Compounds (e.g., "TtBb", "NaCl", "DNA")
+            # \B[A-Z] checks for an uppercase letter that is NOT at the start of a word.
+            if re.search(r'\B[A-Z]', a) or re.search(r'\B[A-Z]', b): return False 
+            
+            # If it passed all the scientific checks, it's just plain text with bad casing
+            # (e.g., "The lake is cold" vs "the lake is cold")
+            return True
+
+        if isinstance(raw_options, list) and answer:
+            ans_str = str(answer).strip()
+            
+            # Start the list with the guaranteed exact correct answer
+            final_options = [ans_str]
+
+            # 1. SMART DEDUPLICATION
+            for opt in raw_options:
+                val = str(opt).strip()
+                
+                # Check if val is a duplicate of any string already in final_options
+                is_dup = False
+                for existing in final_options:
+                    if is_text_duplicate(val, existing):
+                        is_dup = True
+                        break
+                        
+                if not is_dup:
+                    final_options.append(val)
+
+            # 2. FALLBACK PADDING (If deduplication removed too many distractors)
+            fallbacks = ["None of the above", "All of the above", "Cannot be determined", "Not enough information"]
+            fb_idx = 0
+            while len(final_options) < 4 and fb_idx < len(fallbacks):
+                fb = fallbacks[fb_idx]
+                if not any(is_text_duplicate(fb, existing) for existing in final_options):
+                    final_options.append(fb)
+                fb_idx += 1
+
+            # 3. TRUNCATE & SHUFFLE
+            # Slice to guarantee exactly 4 options (the answer is at index 0, so it is safe)
+            final_options = final_options[:4]
+            rng.shuffle(final_options)
+            
+            # 4. REASSIGN
+            clean_result["response"]["options"] = final_options
 
     except Exception as e:
-        # Fallback if for some reason it's not valid JSON
-        clean_result = {"error": "Failed to shuffle options", "response": str(e)}
+        clean_result = {"error": "Failed to deduplicate and shuffle options", "response": str(e)}
 
     generation_time = end_time - start_time
 
@@ -253,26 +293,72 @@ async def get_trial_question(
             }
         }
 
-    # --- THE SAFETY SHUFFLE INJECTION ---
+    # --- THE SMART SAFETY SHUFFLE & DEDUPLICATION ---
     try:
         response_dict = clean_result.get("response", {})
-        options = response_dict.get("options", [])
+        raw_options = response_dict.get("options", [])
         answer = response_dict.get("answer")
 
-        if isinstance(options, list) and answer:
-            # SAFETY CHECK: Inject the answer if the LLM hallucinated and forgot it
-            if answer not in options:
-                print("⚠️ Warning: Answer missing from options. Injecting manually.")
-                if len(options) >= 4:
-                    options[-1] = answer
-                else:
-                    options.append(answer)
+        # Smart helper to distinguish plain text from scientific formulas
+        def is_text_duplicate(a: str, b: str) -> bool:
+            if a == b: return True # Exact match = duplicate
+            if a.lower() != b.lower(): return False # Completely different = keep both
+            
+            # AT THIS POINT: They only differ by capitalization.
+            
+            # Rule A: Keep short formulas/symbols (e.g., "Co" vs "CO")
+            if len(a) <= 2: return False 
+            
+            # Rule B: Keep equations/units (e.g., "10 Mg", "C₆H₁₂O₄ + 7O₂")
+            if re.search(r'[0-9\+\-\=\>\<\→\(\)\[\]]', a): return False 
+            
+            # Rule C: Keep Acronyms, Genotypes, and Compounds (e.g., "TtBb", "NaCl", "DNA")
+            # \B[A-Z] checks for an uppercase letter that is NOT at the start of a word.
+            if re.search(r'\B[A-Z]', a) or re.search(r'\B[A-Z]', b): return False 
+            
+            # If it passed all the scientific checks, it's just plain text with bad casing
+            # (e.g., "The lake is cold" vs "the lake is cold")
+            return True
 
-            rng.shuffle(options)
-            clean_result["response"]["options"] = options
+        if isinstance(raw_options, list) and answer:
+            ans_str = str(answer).strip()
+            
+            # Start the list with the guaranteed exact correct answer
+            final_options = [ans_str]
+
+            # 1. SMART DEDUPLICATION
+            for opt in raw_options:
+                val = str(opt).strip()
+                
+                # Check if val is a duplicate of any string already in final_options
+                is_dup = False
+                for existing in final_options:
+                    if is_text_duplicate(val, existing):
+                        is_dup = True
+                        break
+                        
+                if not is_dup:
+                    final_options.append(val)
+
+            # 2. FALLBACK PADDING (If deduplication removed too many distractors)
+            fallbacks = ["None of the above", "All of the above", "Cannot be determined", "Not enough information"]
+            fb_idx = 0
+            while len(final_options) < 4 and fb_idx < len(fallbacks):
+                fb = fallbacks[fb_idx]
+                if not any(is_text_duplicate(fb, existing) for existing in final_options):
+                    final_options.append(fb)
+                fb_idx += 1
+
+            # 3. TRUNCATE & SHUFFLE
+            # Slice to guarantee exactly 4 options (the answer is at index 0, so it is safe)
+            final_options = final_options[:4]
+            rng.shuffle(final_options)
+            
+            # 4. REASSIGN
+            clean_result["response"]["options"] = final_options
 
     except Exception as e:
-        clean_result = {"error": "Failed to shuffle options", "response": str(e)}
+        clean_result = {"error": "Failed to deduplicate and shuffle options", "response": str(e)}
 
     generation_time = end_time - start_time
 
