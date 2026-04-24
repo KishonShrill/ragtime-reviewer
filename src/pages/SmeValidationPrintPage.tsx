@@ -123,7 +123,7 @@ const SmeValidationPrintPage = () => {
 
                                         {/* IMAGE SECTION */}
                                         {row["Image"] && row["Image"].trim() !== "" && (() => {
-                                            const images = row["Image"].split(",").map(i => i.trim()).filter(i => i !== "");
+                                            const images = row["Image"].split(",").map((i: string) => i.trim()).filter((i: string) => i !== "");
 
                                             return images.map((imgUrl: string, index: number) => (
                                                 <div key={index} className="mb-3 flex justify-center bg-gray-50 border border-gray-200 rounded p-1.5">
