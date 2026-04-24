@@ -1,16 +1,17 @@
 import os
 import csv
 import json
+import re
 import numpy as np
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 import ollama  # Make sure ollama is running in the background
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 rng = np.random.default_rng()
 
 # Connect to MongoDB
-MONGO_URI = os.getenv("mongodb+srv://public_user:public_user@chirscentportfolio.qj3tx5b.mongodb.net/FinalThesis") 
+MONGO_URI = "mongodb+srv://public_user:public_user@chirscentportfolio.qj3tx5b.mongodb.net/FinalThesis"
 client = MongoClient(host=MONGO_URI, server_api=ServerApi(version='1'))
 db = client.get_database(name="FinalThesis")
 knowledge_base = db.get_collection(name="KnowledgeBase")
@@ -22,6 +23,19 @@ def generate_rag_variation(seed_item):
     image_instruction = ""
     if seed_item.get("image"):
         image_instruction = "WARNING: The seed question relies on an accompanying image/graph. You MUST phrase your new question so that it explicitly describes the visual scenario, or clearly references 'the provided diagram'."
+
+    subtopic_instruction = ""
+    subtopic = str(seed_item.get("subtopic", "")).lower()
+    
+    if "Biology" in subtopic or "genetics" in subtopic:
+        subtopic_instruction = "BIOLOGY SPECIFIC: Strictly preserve specific biological entities (e.g., organism names, strains), molecule labels (e.g., X, Y, Z), and phenotypic traits. Do NOT over-generalize or remove crucial contextual details."
+    elif "Chemistry" in subtopic:
+        subtopic_instruction = "CHEMISTRY SPECIFIC: Preserve exact chemical formulas, reaction states, and stoichiometric coefficients."
+    elif "Physics" in subtopic:
+        subtopic_instruction = "PHYSICS SPECIFIC: Retain exact physical constants, units of measurement, and specific situational setups (e.g., 'a 5kg block on a 30-degree incline')."
+    elif "General Science" in subtopic:
+        subtopic_instruction = "GENERAL SCIENCE SPECIFIC: Maintain the exact experimental setup, control variables, specific materials mentioned (e.g., soil types, liquids), and observational data. Only alter the descriptive phrasing of the scenario, not the physical parameters of the experiment itself."
+    # ------------------------------------------
 
     messages = [
         {
@@ -35,6 +49,7 @@ def generate_rag_variation(seed_item):
                 "4. OPTIONS: Provide exactly 4 multiple-choice options. One of them MUST be the exact Correct Answer.\n"
                 "5. FORMAT: Output only a single valid JSON object.\n"
                 f"{image_instruction}\n"
+                f"{subtopic_instruction}\n"
             )
         },
         {
@@ -58,11 +73,11 @@ def generate_rag_variation(seed_item):
     try:
         # Using the synchronous chat for a simple export script
         response = ollama.chat(
-            model='qwen3.5:0.8b', 
+            model='llama3.1:8b', 
             messages=messages,
             format='json'
         )
-        return json.loads(response['message']['content'])
+        clean_result = json.loads(response['message']['content'])
     except Exception as e:
         print(f"Failed to generate variation for ID {seed_item.get('question_id')}: {e}")
         return {
@@ -75,6 +90,51 @@ def generate_rag_variation(seed_item):
             ],
             "answer": seed_item.get('answer')
         }
+
+    raw_options = clean_result.get("options", [])
+    answer = clean_result.get("answer")
+
+    # Smart helper to distinguish plain text from scientific formulas
+    def is_text_duplicate(a: str, b: str) -> bool:
+        a, b = str(a).strip(), str(b).strip()
+        if a == b: return True
+        if a.lower() != b.lower(): return False
+        # If they only differ by case, apply science-specific rules:
+        if len(a) <= 2: return False 
+        if re.search(r'[0-9\+\-\=\>\<\→\(\)\[\]]', a): return False
+        if re.search(r'\B[A-Z]', a) or re.search(r'\B[A-Z]', b): return False
+        return True
+
+    # Robust Option Processing
+    raw_options = clean_result.get("options", [])
+    correct_ans = str(seed_item.get('answer')).strip()
+    
+    # 1. Start with the correct answer
+    final_options = [correct_ans]
+
+    # 2. Add distractors from the model, skipping duplicates of the answer
+    if isinstance(raw_options, list):
+        for opt in raw_options:
+            opt_str = str(opt).strip()
+            # Don't add it if it's a duplicate of the correct answer OR existing options
+            if not any(is_text_duplicate(opt_str, existing) for existing in final_options):
+                final_options.append(opt_str)
+
+    # 3. Fallback padding
+    fallbacks = ["None of the above", "All of the above", "Cannot be determined"]
+    for fb in fallbacks:
+        if len(final_options) >= 4: break
+        if not any(is_text_duplicate(fb, existing) for existing in final_options):
+            final_options.append(fb)
+
+    # 4. Finalize
+    final_options = final_options[:4]
+    rng.shuffle(final_options)
+    clean_result["options"] = final_options
+    clean_result["answer"] = correct_ans # Force answer consistency
+    
+    return clean_result
+
 
 def generate_balanced_review_sheet():
     print("1. Fetching valid questions from the Knowledge Base...")
@@ -100,18 +160,34 @@ def generate_balanced_review_sheet():
     # Randomly pick 2 from every single bucket
     for key, group in grouped_questions.items():
         sample_size = min(len(group), QUESTIONS_PER_CATEGORY)
-        sampled = rng.choice(group, sample_size) # True random pick!
+        sampled = rng.choice(group, size=sample_size, replace=False) # True random pick!
         balanced_questions.extend(sampled)
+
+    # After the loop and before the shave:
+    seen_ids = set()
+    unique_balanced = []
+    for q in balanced_questions:
+        q_id = str(q.get("_id"))
+        if q_id not in seen_ids:
+            unique_balanced.append(q)
+            seen_ids.add(q_id)
+    
+    balanced_questions = unique_balanced
 
     # --- NUMPY STRICT 50 LOGIC ---
     if len(balanced_questions) > 50:
         print(f"   Fetched {len(balanced_questions)} balanced questions. Shaving randomly to exactly 50...")
-        random_indices = np.random.choice(len(balanced_questions), size=50, replace=False)
-        balanced_questions = [balanced_questions[i] for i in random_indices]
+        rng.shuffle(balanced_questions)
+        balanced_questions = balanced_questions[:50]
         
     # Sort them nicely for the professors after the random shave
     balanced_questions.sort(key=lambda x: (x.get("subtopic", ""), x.get("bloom_taxonomy", ""), x.get("difficulty", "")))
+
     # ----------------------------
+
+    subtopic_counts = Counter([q.get("subtopic", "Unknown") for q in balanced_questions])
+    taxonomy_counts = Counter([q.get("bloom_taxonomy", "Unknown") for q in balanced_questions])
+    difficulty_counts = Counter([q.get("difficulty", "Unknown") for q in balanced_questions])
 
     filename = "rag_sme_validation_sheet_strict_50.csv"
     
@@ -125,7 +201,8 @@ def generate_balanced_review_sheet():
             "Image", 
             "Subtopic", 
             "Bloom's", 
-            "Difficulty", 
+            "Difficulty",
+            "Description",
             "Original Seed Question", 
             "RAG Generated Question", 
             "Real Answer", 
@@ -145,10 +222,11 @@ def generate_balanced_review_sheet():
 
             writer.writerow([
                 q.get("question_id", ""),
-                q.get("image", ""),
+                q.get("images", ""),
                 q.get("subtopic", ""),
                 q.get("bloom_taxonomy", ""),
                 q.get("difficulty", ""),
+                q.get("description", ""),
                 q.get("question", ""),
                 rag_output.get("question", ""), 
                 q.get("answer", ""),
@@ -158,7 +236,21 @@ def generate_balanced_review_sheet():
                 ""  
             ])
 
-    print(f"✅ Successfully exported and generated {filename}!")
+    print("\n" + "="*30)
+    print("📊 SELECTION SUMMARY")
+    print("="*30)
+    print(f"Total Questions: {len(balanced_questions)}")
+    
+    print("\nBY SUBTOPIC:")
+    for sub, count in subtopic_counts.items():
+        print(f"- {sub}: {count}")
+        
+    print("\nBY BLOOM'S TAXONOMY:")
+    for tax, count in taxonomy_counts.items():
+        print(f"- {tax}: {count}")
+    print("="*30)
+
+    print(f"\n✅ Successfully exported and generated {filename}!")
 
 if __name__ == "__main__":
     generate_balanced_review_sheet()

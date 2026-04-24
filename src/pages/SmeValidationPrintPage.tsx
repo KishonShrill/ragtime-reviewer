@@ -113,16 +113,28 @@ const SmeValidationPrintPage = () => {
                                             </div>
                                         </div>
 
-                                        {/* IMAGE */}
-                                        {row["Image"] && row["Image"].trim() !== "" && (
-                                            <div className="mb-3 flex justify-center bg-gray-50 border border-gray-200 rounded p-1.5">
-                                                <img
-                                                    src={row["Image"]}
-                                                    alt="Question Context Diagram"
-                                                    className="max-h-40 object-contain rounded"
-                                                />
+                                        {/* DESCRIPTION SECTION */}
+                                        {row["Description"] && row["Description"].trim() !== "" && (
+                                            <div className="mb-3 bg-gray-50 border border-gray-200 rounded p-2.5">
+                                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Scenario / Context</p>
+                                                <p className="text-[11px] text-gray-800 leading-snug">{row["Description"]}</p>
                                             </div>
                                         )}
+
+                                        {/* IMAGE SECTION */}
+                                        {row["Image"] && row["Image"].trim() !== "" && (() => {
+                                            const images = row["Image"].split(",").map(i => i.trim()).filter(i => i !== "");
+
+                                            return images.map((imgUrl: string, index: number) => (
+                                                <div key={index} className="mb-3 flex justify-center bg-gray-50 border border-gray-200 rounded p-1.5">
+                                                    <img
+                                                        src={imgUrl}
+                                                        alt={`Question Context Diagram ${index + 1}`}
+                                                        className="max-h-40 object-contain rounded"
+                                                    />
+                                                </div>
+                                            ));
+                                        })()}
 
                                         {/* QUESTION TEXTS */}
                                         <div className="grid grid-cols-1 gap-3 mb-3">

@@ -34,7 +34,7 @@ const App = () => (
                 </BrowserRouter>
             </TooltipProvider>
         </AuthProvider>
-        <ReactQueryDevtools initialIsOpen={false} />
+        {/* <ReactQueryDevtools initialIsOpen={false} /> */}
     </QueryClientProvider>
 );
 
