@@ -77,11 +77,10 @@ async def get_rag_question(
     start_time = time.perf_counter()
 
     try:
-        response = await AsyncClient().chat(
+        response = await AsyncClient(host='http://127.0.0.1:11434').chat(
             model='llama3.1:8b', 
             messages=messages,
-            format='json',
-            think=True
+            format='json'
         )
         end_time = time.perf_counter()
 
@@ -260,10 +259,9 @@ async def get_trial_question(
 
     try:
         response = await AsyncClient().chat(
-            model='qwen3.5:0.8b', 
+            model='llama3.1:8b',
             messages=messages,
-            format='json',
-            think=False
+            format='json'
         )
         end_time = time.perf_counter()
         clean_result = {"error": False, "response": json.loads(response.message.content)}
