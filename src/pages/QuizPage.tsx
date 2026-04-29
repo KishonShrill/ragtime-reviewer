@@ -175,7 +175,7 @@ const QuizPage = () => {
                     aiQuestion.isMock = true;
                     aiQuestion.mockMessage = data.result.error;
                 }
-                console.log(aiQuestion)
+                //console.log(aiQuestion)
                 return okAsync(aiQuestion);
             });
         }).mapErr((err) => err).map((val) => val);

@@ -65,5 +65,5 @@ async def save_review_log(
         payload: LogPayload
         ) -> None:
     data = json.dumps(payload.data.model_dump())
-
+    print("DId i pass here?!")
     create_reviews(user=user, data=payload.data, timestamp=payload.timestamp, isCorrect=payload.isCorrect)

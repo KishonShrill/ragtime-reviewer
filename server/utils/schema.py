@@ -40,8 +40,9 @@ class Logs(BaseModel):
     original_question: str
     question: str
     answer: str
-    area: Optional[str]
-    image: Optional[str]
+    description: Optional[str] = None
+    area: Optional[str] = None
+    image: Optional[str] = None
     options: list[str]
     bloom_taxonomy: str
     difficulty: str
@@ -50,7 +51,7 @@ class Logs(BaseModel):
 
 class LogPayload(BaseModel):
     data: Logs
-    latestScores: Optional[dict[str, Any]]
+    latestScores: Optional[dict[str, Any]] = None
     isCorrect: bool
     timestamp: datetime
 

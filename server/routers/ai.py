@@ -85,7 +85,6 @@ async def get_rag_question(
                 "bloom_taxonomy": "{fetched_item.get('bloom_taxonomy')}",
                 "difficulty": "{fetched_item.get('difficulty')}",
                 "subtopic": "{fetched_item.get('subtopic')}"
-                "area": "{fetched_item.get('area')}"
                 }}"""
         }
     ]
@@ -357,11 +356,7 @@ async def get_review_question(
     generation_time = end_time - start_time
 
     return {
-        "queries": {
-            "question_id": request.question_id, 
-            "question": request.question,
-            "image": request.image, 
-            "description": request.description},
+        "queries": request,
         "result": clean_result,
         "log_count": 1,
         "execution_time_seconds": round(generation_time, 3)
