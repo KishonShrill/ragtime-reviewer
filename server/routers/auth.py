@@ -68,7 +68,7 @@ async def login(request: LoginRequest) -> User:
     if latest_log and "updated_scores" in latest_log:
         current_scores = latest_log["updated_scores"]
     else:
-        current_scores = user_doc.get("knowledge_scores")
+        current_scores = user.get("knowledge_scores")
 
     print(f"Email: {email}")
     try: 

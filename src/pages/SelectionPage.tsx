@@ -10,7 +10,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Zap, PlayCircle, LogOut, Database, Shield, BookOpen, UserCircle, FileText } from "lucide-react";
+import { Zap, PlayCircle, LogOut, Database, Shield, BookOpen, UserCircle, FileText, QrCode, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -104,7 +104,7 @@ const SelectionPage = () => {
     const handleProfile = () => navigate("/profile");
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <div className="flex min-h-screen items-center justify-center bg-background p-4 py-8">
             <Card className="w-full max-w-lg shadow-xl border-border/50">
 
                 {/* --- HEADER (Visible to Everyone) --- */}
@@ -157,6 +157,36 @@ const SelectionPage = () => {
                         </Button>
                     </div>
 
+                    {/* --- EVALUATION FORM (Visible to Everyone) --- */}
+                    <div className="pt-6 border-t border-border/60 flex flex-col items-center text-center space-y-4">
+                        <div className="space-y-1">
+                            <h3 className="font-bold text-foreground flex items-center justify-center gap-2">
+                                <QrCode className="h-4 w-4 text-primary" />
+                                App Evaluation Form
+                            </h3>
+                            <p className="text-xs text-muted-foreground">
+                                Scan the QR code or click the link below to provide your feedback after testing.
+                            </p>
+                        </div>
+
+                        <img
+                            src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=https://docs.google.com/forms/d/e/1FAIpQLSc9BRsQwIjl-AfXLy3mGLaf1NsjTK5v_4iBtZe9qLimw67h5Q/viewform?usp=publish-editor"
+                            alt="Google Form QR Code"
+                            className="h-36 w-36 rounded-md shadow-sm border border-border/50 p-1 bg-white"
+                        />
+
+                        <Button variant="outline" size="sm" asChild className="w-full">
+                            <a
+                                href="https://docs.google.com/forms/d/e/1FAIpQLSc9BRsQwIjl-AfXLy3mGLaf1NsjTK5v_4iBtZe9qLimw67h5Q/viewform?usp=publish-editor"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                <ExternalLink className="h-4 w-4 mr-2" />
+                                Open Form in Browser
+                            </a>
+                        </Button>
+                    </div>
+
                     {/* --- ADMIN CONSOLE (Visible only to Admins) --- */}
                     {isAdmin && (
                         <div className="pt-6 border-t border-border/60 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -176,7 +206,7 @@ const SelectionPage = () => {
                                     Knowledge Base Explorer
                                 </Button>
 
-                                {/* NEW: SME Validation Generator Button */}
+                                {/* SME Validation Generator Button */}
                                 <Button
                                     variant="outline"
                                     className="w-full h-12 gap-2 justify-start px-4"

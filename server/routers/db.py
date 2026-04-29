@@ -40,6 +40,7 @@ def upload_question_logs(
         payload: LogPayload
         ) -> None:
     data = json.dumps(payload.data.model_dump())
+    print(data)
     latestScores = json.dumps(payload.latestScores)
 
     create_logs(user=user, data=payload.data, timestamp=payload.timestamp, latestScores=payload.latestScores, isCorrect=payload.isCorrect)

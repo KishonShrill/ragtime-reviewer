@@ -151,7 +151,7 @@ const QuizPage = () => {
                         reason: data?.detail?.reason || "An unknown error occurred"
                     });
                 }
-                console.log(data)
+                //console.log(data)
                 const aiQuestion = data.result.response;
                 aiQuestion.original_question_id = data.queries?.question_id;
                 aiQuestion.original_question = data.queries?.question;
@@ -169,6 +169,7 @@ const QuizPage = () => {
 
                 aiQuestion.image = data.queries?.image || null;
                 aiQuestion.description = data.queries?.description || null;
+                aiQuestion.area = data.queries?.area || null;
 
                 if (data.result.error) {
                     aiQuestion.isMock = true;
@@ -254,6 +255,7 @@ const QuizPage = () => {
                     const aiQuestion = data.result.response;
                     aiQuestion.original_question_id = data.queries?.question_id;
                     aiQuestion.original_question = data.queries?.question;
+                    aiQuestion.area = data.queries?.area;
                     aiQuestion.execution_time = data.execution_time_seconds;
                     aiQuestion.image = data.queries?.image || null;
                     aiQuestion.description = data.queries?.description || null;
@@ -344,7 +346,7 @@ const QuizPage = () => {
         // 3. DATABASE LOGGING: Route to the correct backend collection
         const currentTime = new Date().toISOString();
         const endpoint = isReviewMode ? "/api/reviews" : "/api/logs"; // <-- Routes to new collection!
-
+        console.log(question)
         ResultAsync.fromPromise(
             fetch(`${backendUrl}${endpoint}`, {
                 method: 'POST',

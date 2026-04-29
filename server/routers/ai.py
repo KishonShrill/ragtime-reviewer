@@ -38,7 +38,7 @@ async def get_rag_question(
         )
 
     subtopic_instruction = ""
-    subtopic = str(fetched_item.get("subtopic", "")).lower()
+    subtopic = fetched_item.get("subtopic").lower()
     
     if "Biology" in subtopic or "genetics" in subtopic:
         subtopic_instruction = "BIOLOGY SPECIFIC: Strictly preserve specific biological entities (e.g., organism names, strains), molecule labels (e.g., X, Y, Z), and phenotypic traits. Do NOT over-generalize or remove crucial contextual details."
@@ -85,6 +85,7 @@ async def get_rag_question(
                 "bloom_taxonomy": "{fetched_item.get('bloom_taxonomy')}",
                 "difficulty": "{fetched_item.get('difficulty')}",
                 "subtopic": "{fetched_item.get('subtopic')}"
+                "area": "{fetched_item.get('area')}"
                 }}"""
         }
     ]
@@ -196,6 +197,8 @@ async def get_rag_question(
         clean_result = {"error": "Failed to deduplicate and shuffle options", "response": str(e)}
 
     generation_time = end_time - start_time
+
+    print(fetched_item)
 
     return {
         "queries": fetched_item,

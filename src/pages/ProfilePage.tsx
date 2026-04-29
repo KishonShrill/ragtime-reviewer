@@ -13,7 +13,7 @@ import {
     type ChartConfig,
 } from "@/components/ui/chart";
 import { LineChart, Line, XAxis, YAxis, ReferenceLine } from "recharts";
-import { User, BookOpen, FlaskConical, Atom, Globe, ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, Download, CheckCircle2, XCircle } from "lucide-react";
+import { User, BookOpen, FlaskConical, Atom, Globe, ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, Download, CheckCircle2, XCircle, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -153,6 +153,41 @@ const ProfilePage = () => {
         });
     };
 
+    function getWeakTaxonomies(subject: string, allLogs: any[]) {
+        const incorrectLogs = allLogs.filter(
+            (log) => !log.isCorrect && log.augmented?.subtopic === subject
+        );
+
+        const taxonomyFreq: Record<string, number> = {};
+
+        incorrectLogs.forEach((log) => {
+            const taxonomy = log.augmented?.bloom_taxonomy;
+            if (taxonomy) taxonomyFreq[taxonomy] = (taxonomyFreq[taxonomy] || 0) + 1;
+        });
+
+        return Object.entries(taxonomyFreq)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 2)
+            .map(([name]) => name);
+    }
+
+    function getAllWeakAreas(allLogs: any[]) {
+        const incorrectLogs = allLogs.filter((log) => !log.isCorrect);
+        const areaFreq: Record<string, number> = {};
+
+        incorrectLogs.forEach((log) => {
+            const area = log.knowledge_base?.area;
+            if (area && area !== "null") {
+                areaFreq[area] = (areaFreq[area] || 0) + 1;
+            }
+        });
+
+        // Return them all, sorted from most frequently incorrect to least
+        return Object.entries(areaFreq)
+            .sort((a, b) => b[1] - a[1])
+            .map(([name]) => name);
+    }
+
     const handleExportPDF = async () => {
         if (!printRef.current) return;
 
@@ -242,6 +277,7 @@ const ProfilePage = () => {
     const startIndex = (currentPage - 1) * BATCH_SIZE;
     const endIndex = startIndex + BATCH_SIZE;
     const currentBatchData = progressData.slice(startIndex, endIndex);
+    const allWeakAreas = getAllWeakAreas(progressData);
 
     return (
         <div className="min-h-screen bg-background p-4 md:p-8">
@@ -288,9 +324,12 @@ const ProfilePage = () => {
                         </CardContent>
                     </Card>
 
+                    {/* Subject Cards */}
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                         {Object.entries(knowledgeScores || {}).map(([subject, data]: [string, any]) => {
                             const label = getMasteryLabel(data.mastery_score);
+                            const topTaxonomies = getWeakTaxonomies(subject, progressData);
+
                             return (
                                 <Card key={subject}>
                                     <CardHeader className="flex flex-row items-center gap-2 pb-2">
@@ -307,19 +346,23 @@ const ProfilePage = () => {
                                             </span>
                                         </div>
                                         <Progress value={data.mastery_score * 100} color={label.bgClass} className="h-2" />
-                                        <div className="pt-1">
-                                            {data.weak_concepts && data.weak_concepts.length > 0 ? (
-                                                <div className="flex flex-wrap gap-1.5">
-                                                    {data.weak_concepts.map((c: string) => (
-                                                        <Badge key={c} variant="secondary" className="text-xs">
-                                                            {c}
-                                                        </Badge>
-                                                    ))}
-                                                </div>
-                                            ) : (
+
+                                        <div className="pt-2 space-y-3 border-t mt-2">
+                                            {topTaxonomies.length === 0 ? (
                                                 <p className="text-xs text-muted-foreground">
-                                                    No weak concepts identified yet.
+                                                    No skill gaps identified.
                                                 </p>
+                                            ) : (
+                                                <div className="space-y-1.5">
+                                                    <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Skill Gaps</p>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {topTaxonomies.map((tax: string) => (
+                                                            <Badge key={tax} variant="outline" className="text-[10px] text-orange-600 border-orange-500/30 bg-orange-500/5 hover:bg-orange-500/10">
+                                                                {tax}
+                                                            </Badge>
+                                                        ))}
+                                                    </div>
+                                                </div>
                                             )}
                                         </div>
                                     </CardContent>
@@ -432,6 +475,29 @@ const ProfilePage = () => {
                         </TabsList>
 
                         <TabsContent value="main">
+                            {allWeakAreas.length > 0 && (
+                                <Card className="border-destructive/20 bg-destructive/5 shadow-sm mb-5">
+                                    <CardHeader className="pb-3">
+                                        <CardTitle className="text-lg text-destructive flex items-center gap-2">
+                                            <Target className="h-5 w-5" /> Overall Weak Concept Areas
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                                            {allWeakAreas.map(area => (
+                                                <Badge
+                                                    key={area}
+                                                    variant="secondary"
+                                                    className="justify-center text-center px-3 py-2 bg-background border border-destructive/20 text-destructive hover:bg-destructive/10 transition-colors whitespace-normal"
+                                                >
+                                                    {area}
+                                                </Badge>
+                                            ))}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )}
+
                             {currentBatchData.length > 0 ? (
                                 <Card>
                                     <CardHeader>

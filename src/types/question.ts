@@ -17,6 +17,7 @@ export type LogEntry = {
     timestamp: string;
     knowledge_base: {
         original_question_id?: string;
+        area: string;
     };
     augmented: {
         question: string;

@@ -24,6 +24,7 @@ class QuestionResponse(TypedDict):
     question_id: str
     question: str
     answer: str
+    area: str
     bloom_taxonomy: str
     difficulty: str
     subtopic: str
@@ -39,6 +40,8 @@ class Logs(BaseModel):
     original_question: str
     question: str
     answer: str
+    area: Optional[str]
+    image: Optional[str]
     options: list[str]
     bloom_taxonomy: str
     difficulty: str

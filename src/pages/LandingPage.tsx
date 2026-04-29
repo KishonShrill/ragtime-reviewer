@@ -38,8 +38,8 @@ const LandingPage = () => {
         setLoading(true);
 
         const authAction = isLogin
-            ? login(username, password, backendUrl) // Adjust arguments based on your API
-            : signup(username, email, password, backendUrl, secret);
+            ? login(username, password, backendUrl.trim()) // Adjust arguments based on your API
+            : signup(username, email, password, backendUrl.trim(), secret);
 
         const res = await authAction;
 

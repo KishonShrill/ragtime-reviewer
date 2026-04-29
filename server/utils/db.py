@@ -104,7 +104,8 @@ def create_logs(user: User, data: Logs, timestamp: datetime, latestScores: dict[
             "user": user.username,
             "knowledge_base": {
                 "original_question_id": data.original_question_id,
-                "original_question": data.original_question
+                "original_question": data.original_question,
+                "area": data.area
             },
             "augmented": {
                 "question": data.question,
@@ -146,7 +147,8 @@ def create_reviews(user: User, data: Any, timestamp: datetime, isCorrect: bool) 
                 "options": data.options,
                 "bloom_taxonomy": data.bloom_taxonomy,
                 "difficulty": data.difficulty,
-                "subtopic": data.subtopic
+                "subtopic": data.subtopic,
+                "area": data.area
             },
             "timestamp": timestamp,
             "execution_time": data.execution_time,
@@ -179,7 +181,7 @@ def get_logs_count(user: User) -> int:
 
 def get_scores_of_user(user: User) -> dict[str,Any]:
     try:
-        cursor = logs.find({"user": user.username}, {"knowledge_base": 0}).sort("timestamp", 1)
+        cursor = logs.find({"user": user.username}).sort("timestamp", 1)
         logs_list = list(cursor)
         
         for log in logs_list:
@@ -263,7 +265,8 @@ def get_question(query_fields: LogicEngineResponse, excluded_ids: Optional[list[
             subtopic = raw_data.get("subtopic"),
             difficulty = raw_data.get("difficulty"),
             bloom_taxonomy = raw_data.get("bloom_taxonomy"),
-            image=raw_data.get("image"),
+            image=raw_data.get("images"),
+            area=raw_data.get("area"),
             description=raw_data.get("description")
         )
     except IndexError:
