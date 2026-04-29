@@ -11,3 +11,17 @@ export interface Question {
     isMock: boolean | null;
     mockMessage: string | null;
 }
+
+export type LogEntry = {
+    isCorrect: boolean;
+    timestamp: string;
+    knowledge_base: {
+        original_question_id?: string;
+    };
+    augmented: {
+        question: string;
+        subtopic: string;
+        difficulty: string;
+        bloom_taxonomy: string;
+    };
+};

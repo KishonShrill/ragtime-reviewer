@@ -16,6 +16,7 @@ db = client.get_database(name="FinalThesis")
 knowledge_base = db.get_collection(name="KnowledgeBase")
 users = db.get_collection(name="Users")
 logs = db.get_collection(name="Logs")
+reviews = db.get_collection(name="Reviews")
 
 def check_health() -> bool:
     """Returns True if MongoDB is reachable, False otherwise"""
@@ -130,6 +131,39 @@ def create_logs(user: User, data: Logs, timestamp: datetime, latestScores: dict[
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
                                                                                        "reason": "Cannot create log for user for database..."})
 
+def create_reviews(user: User, data: Any, timestamp: datetime, isCorrect: bool) -> None:
+    try:
+        payload = {
+            "user": user.username,
+            "user_email": user.email,
+            "knowledge_base": {
+                "original_question_id": data.original_question_id,
+                "original_question": data.original_question
+            },
+            "augmented": {
+                "question": data.question,
+                "answer": data.answer,
+                "options": data.options,
+                "bloom_taxonomy": data.bloom_taxonomy,
+                "difficulty": data.difficulty,
+                "subtopic": data.subtopic
+            },
+            "timestamp": timestamp,
+            "execution_time": data.execution_time,
+            "isCorrect": isCorrect
+        }
+
+        result = reviews.insert_one(document=payload)
+        print(result)
+
+    except IndexError:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Error",
+                                                                                       "reason": "Query not found"})
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
+                                                                                       "reason": "Cannot create review for user for database..."})
+
 
 def get_logs_count(user: User) -> int:
     try:
@@ -156,6 +190,28 @@ def get_scores_of_user(user: User) -> dict[str,Any]:
     except:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
                                                                                        "reason": "Cannot get logs of user from database..."})
+
+def get_reviews_of_user(user: User) -> dict[str,Any]:
+    try:
+        # Note: If you want to show the original seed question in the UI later, 
+        # remove {"knowledge_base": 0} so the DB includes it in the payload.
+        cursor = reviews.find({"user": user.username}, {"knowledge_base": 0}).sort("timestamp", 1)
+        reviews_list = list(cursor)
+        
+        for review in reviews_list:
+            review["_id"] = str(review["_id"]) 
+        
+        return {"status": "success", "data": reviews_list}
+    
+    except Exception as e:
+        print(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail={
+                "title": "MongoDB Connection Error",
+                "reason": "Cannot get reviews of user from database..."
+            }
+        )
 
 def get_latest_user_scores(username: str) -> dict[str,Any] | None:
     try:

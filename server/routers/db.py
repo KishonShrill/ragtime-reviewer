@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from utils.token import user_required, admin_required 
 from utils.schema import SignupRequest, LoginRequest, LogPayload
-from utils.db import db, create_logs, get_scores_of_user, get_all_knowledge_base
+from utils.db import db, create_logs, create_reviews, get_scores_of_user, get_all_knowledge_base, get_reviews_of_user
 from typing import cast, Annotated, Mapping, Any
 import os
 import json
@@ -9,6 +9,7 @@ import json
 
 users = db.get_collection(name="Users")
 logs = db.get_collection(name="Logs")
+reviews = db.get_collection(name="Reviews")
 
 router: APIRouter = APIRouter(prefix="/api", tags=["Database"])
 
@@ -42,3 +43,26 @@ def upload_question_logs(
     latestScores = json.dumps(payload.latestScores)
 
     create_logs(user=user, data=payload.data, timestamp=payload.timestamp, latestScores=payload.latestScores, isCorrect=payload.isCorrect)
+
+@router.get("/history")
+async def get_user_history(
+    user: Annotated[dict[str, str], Depends(dependency=user_required)]
+):
+    account: User = user
+    # Fetch BOTH logs and reviews for the profile page
+    user_logs = get_scores_of_user(user=user)
+    user_reviews = get_reviews_of_user(user=user)
+
+    return {
+        "logs": user_logs.get("data", []),
+        "reviews": user_reviews.get("data", [])
+    }
+
+@router.post("/reviews")
+async def save_review_log(
+        user: Annotated[dict[str, str], Depends(dependency=user_required)],
+        payload: LogPayload
+        ) -> None:
+    data = json.dumps(payload.data.model_dump())
+
+    create_reviews(user=user, data=payload.data, timestamp=payload.timestamp, isCorrect=payload.isCorrect)

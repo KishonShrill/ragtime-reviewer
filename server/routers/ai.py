@@ -354,7 +354,11 @@ async def get_review_question(
     generation_time = end_time - start_time
 
     return {
-        "queries": {"question_id": request.question_id, "image": request.image, "description": request.description},
+        "queries": {
+            "question_id": request.question_id, 
+            "question": request.question,
+            "image": request.image, 
+            "description": request.description},
         "result": clean_result,
         "log_count": 1,
         "execution_time_seconds": round(generation_time, 3)

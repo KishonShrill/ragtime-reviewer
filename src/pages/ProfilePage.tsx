@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -53,6 +54,7 @@ const ProfilePage = () => {
     // Pagination & Chart State
     const BATCH_SIZE = 50;
     const [progressData, setProgressData] = useState<any[]>([]);
+    const [reviewData, setReviewData] = useState<any[]>([]);
     const [currentPage, setCurrentPage] = useState(1);
     const [isExporting, setIsExporting] = useState(false);
     const printRef = useRef<HTMLDivElement>(null);
@@ -70,9 +72,14 @@ const ProfilePage = () => {
             const cachedData = localStorage.getItem(cacheKey);
             if (cachedData) {
                 try {
-                    const parsedData = JSON.parse(cachedData);
-                    setProgressData(parsedData);
-                    setCurrentPage(Math.max(1, Math.ceil(parsedData.length / BATCH_SIZE)));
+                    const parsedData = JSON.parse(cachedData) || [];
+                    const cachedLogs = parsedData.logs || [];
+                    const cachedReviews = parsedData.reviews || [];
+
+                    setProgressData(cachedLogs);
+                    setReviewData(cachedReviews);
+
+                    setCurrentPage(Math.max(1, Math.ceil(cachedLogs.length / BATCH_SIZE)));
                     return; // Exit early! No need to hit the database.
                 } catch (e) {
                     console.error("Failed to parse cached logs", e);
@@ -83,7 +90,7 @@ const ProfilePage = () => {
         // 2. If forcing refresh or no cache exists, hit the API
         setIsRefreshing(true);
         ResultAsync.fromPromise(
-            fetch(`${backendUrl}/api/logs`, {
+            fetch(`${backendUrl}/api/history`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -105,7 +112,7 @@ const ProfilePage = () => {
                         reason: data?.detail?.reason || "An unknown error occurred"
                     });
                 }
-                return okAsync(data.data);
+                return okAsync(data);
             });
         }).mapErr((err) => {
             setIsRefreshing(false);
@@ -114,14 +121,16 @@ const ProfilePage = () => {
                 title: err.title,
                 description: err.reason
             });
-        }).map((dataArray) => {
+        }).map((dataObj: any) => {
             setIsRefreshing(false);
-            if (!dataArray || dataArray.length === 0) return;
+            if (!dataObj) return;
 
-            console.log({ dataArray })
+            // Destructure the two lists from the backend
+            const rawLogs = dataObj.logs || [];
+            const rawReviews = dataObj.reviews || [];
 
-            const formattedChartData = dataArray.map((log: any, index: number) => {
-                const scores = log.updated_scores;
+            const formattedChartData = rawLogs.map((log: any, index: number) => {
+                const scores = log.updated_scores || {};
                 return {
                     ...log,
                     quiz: `Q${index + 1}`,
@@ -132,52 +141,17 @@ const ProfilePage = () => {
                 };
             });
 
-            console.log({ formattedChartData })
-
             setProgressData(formattedChartData);
+            setReviewData(rawReviews); // Save the reviews to state
             setCurrentPage(Math.max(1, Math.ceil(formattedChartData.length / BATCH_SIZE)));
 
-            // 3. Save the newly fetched data to LocalStorage
-            localStorage.setItem(cacheKey, JSON.stringify(formattedChartData));
+            localStorage.setItem(cacheKey, JSON.stringify({ logs: formattedChartData, reviews: rawReviews }));
 
             if (forceRefresh) {
                 toast({ title: "Synced!", description: "Your chart is up to date." });
             }
         });
     };
-
-    // const handleExportPDF = async () => {
-    //     if (!printRef.current) return;
-
-    //     setIsExporting(true);
-    //     toast({ title: "Generating PDF", description: "Please wait while we prepare your report..." });
-
-    //     try {
-    //         // 1. Take a screenshot of the targeted element
-    //         const canvas = await html2canvas(printRef.current, {
-    //             scale: 2, // Higher scale = better resolution
-    //             useCORS: true, // Helps if you have external images
-    //             backgroundColor: "#ffffff", // Ensures a white background instead of transparent
-    //         });
-
-    //         // 2. Calculate PDF dimensions (A4 size)
-    //         const imgData = canvas.toDataURL("image/png");
-    //         const pdf = new jsPDF("p", "mm", "a4");
-    //         const pdfWidth = pdf.internal.pageSize.getWidth();
-    //         const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-    //         // 3. Add the image to the PDF and download
-    //         pdf.addImage(imgData, "PNG", 0, 10, pdfWidth, pdfHeight);
-    //         pdf.save(`${user}_Reviewer_Progress.pdf`);
-
-    //         toast({ title: "Success!", description: "PDF downloaded successfully." });
-    //     } catch (error) {
-    //         console.error("PDF Export Error:", error);
-    //         toast({ variant: "destructive", title: "Export Failed", description: "Could not generate PDF." });
-    //     } finally {
-    //         setIsExporting(false);
-    //     }
-    // };
 
     const handleExportPDF = async () => {
         if (!printRef.current) return;
@@ -450,76 +424,114 @@ const ProfilePage = () => {
                         </CardContent>
                     </Card>
 
-                    {/* NEW: Batch Question History */}
-                    {currentBatchData.length > 0 && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="text-xl">Batch {currentPage} Review History</CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                {currentBatchData.map((log) => (
-                                    <div
-                                        key={log._id}
-                                        className={`p-4 rounded-lg border-l-4 border transition-colors ${log.isCorrect
-                                            ? 'border-l-success bg-success/5 border-success/20'
-                                            : 'border-l-destructive bg-destructive/5 border-destructive/20'
-                                            }`}
-                                    >
-                                        <div className="flex items-start justify-between gap-4">
-                                            <div className="space-y-2">
-                                                {/* Meta Tags */}
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <Badge variant="outline" className="bg-background">{log.augmented?.subtopic}</Badge>
-                                                    <Badge variant="secondary" className={`bg-background text-xs font-normal ${log.augemented?.difficulty === "Easy" ? "bg-green-600 hover:bg-green-600 text-white font-bold" :
-                                                        log.augmented?.difficulty === "Medium" ? "bg-[#f97415] hover:bg-[#f97415] text-white font-bold" :
-                                                            log.augmented?.difficulty === "Hard" ? "bg-red-500 hover:bg-red-500 text-white font-bold" :
-                                                                "text-muted-foreground"
-                                                        }`}
-                                                    >
-                                                        {log.augmented?.difficulty}</Badge>
-                                                    <Badge variant="secondary" className={`text-xs font-bold bg-white hover:bg-white ${log.augmented?.bloom_taxonomy === "Remembering" ? "text-green-600" :
-                                                        log.augmented?.bloom_taxonomy === "Understanding" ? "text-[#f97415]" :
-                                                            log.augmented?.bloom_taxonomy === "Applying" ? "text-destructive" :
-                                                                "text-muted-foreground"
-                                                        }`}
-                                                    >{log.augmented?.bloom_taxonomy}</Badge>
+                    {/* NEW: Tabbed Question History */}
+                    <Tabs defaultValue="main" className="w-full">
+                        <TabsList className="grid w-full grid-cols-2 mb-4">
+                            <TabsTrigger value="main">Standard Quizzes</TabsTrigger>
+                            <TabsTrigger value="reviews">Downgraded Reviews</TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent value="main">
+                            {currentBatchData.length > 0 ? (
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="text-xl">Batch {currentPage} Assessment History</CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="space-y-4">
+                                        {currentBatchData.map((log) => (
+                                            <div key={log._id} className={`p-4 rounded-lg border-l-4 border transition-colors ${log.isCorrect ? 'border-l-success bg-success/5 border-success/20' : 'border-l-destructive bg-destructive/5 border-destructive/20'}`}>
+                                                <div className="flex items-start justify-between gap-4">
+                                                    <div className="space-y-2 flex-1">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <Badge variant="outline" className="bg-background">{log.augmented?.subtopic}</Badge>
+                                                            <Badge variant="secondary" className={`bg-background text-xs font-normal ${log.augemented?.difficulty === "Easy" ? "bg-green-600 hover:bg-green-600 text-white font-bold" :
+                                                                log.augmented?.difficulty === "Medium" ? "bg-[#f97415] hover:bg-[#f97415] text-white font-bold" :
+                                                                    log.augmented?.difficulty === "Hard" ? "bg-red-500 hover:bg-red-500 text-white font-bold" :
+                                                                        "text-muted-foreground"
+                                                                }`}
+                                                            >
+                                                                {log.augmented?.difficulty}</Badge>
+                                                            <Badge variant="secondary" className={`text-xs font-bold bg-white hover:bg-white ${log.augmented?.bloom_taxonomy === "Remembering" ? "text-green-600" :
+                                                                log.augmented?.bloom_taxonomy === "Understanding" ? "text-[#f97415]" :
+                                                                    log.augmented?.bloom_taxonomy === "Applying" ? "text-destructive" :
+                                                                        "text-muted-foreground"
+                                                                }`}
+                                                            >{log.augmented?.bloom_taxonomy}</Badge>
+                                                        </div>
+                                                        <p className="font-medium text-foreground text-sm leading-relaxed">{log.augmented?.question}</p>
+                                                        <div className="pt-2">
+                                                            <p className="text-sm text-muted-foreground">
+                                                                <span className="font-semibold text-foreground">Correct Answer: </span>
+                                                                {log.augmented?.answer}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="shrink-0 mt-1">
+                                                        {log.isCorrect ? (
+                                                            <div className="flex items-center text-success gap-1.5 text-sm font-bold">
+                                                                <CheckCircle2 className="h-5 w-5" />
+                                                                <span className="hidden sm:inline">Correct</span>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center text-destructive gap-1.5 text-sm font-bold">
+                                                                <XCircle className="h-5 w-5" />
+                                                                <span className="hidden sm:inline">Incorrect</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
+                                            </div>
+                                        ))}
+                                    </CardContent>
+                                </Card>
+                            ) : (
+                                <div className="p-8 text-center text-muted-foreground border rounded-lg">No standard quizzes taken yet.</div>
+                            )}
+                        </TabsContent>
 
-
-                                                {/* Question Text */}
-                                                <p className="font-medium text-foreground text-sm leading-relaxed">
-                                                    {log.augmented?.question}
-                                                </p>
-
-                                                {/* Answer Details */}
-                                                <div className="pt-2">
-                                                    <p className="text-sm text-muted-foreground">
-                                                        <span className="font-semibold text-foreground">Correct Answer: </span>
-                                                        {log.augmented?.answer}
+                        <TabsContent value="reviews">
+                            <Card className="border-orange-500/20">
+                                <CardHeader className="bg-orange-500/5">
+                                    <CardTitle className="text-xl text-orange-700">Review Sessions Taken</CardTitle>
+                                </CardHeader>
+                                <CardContent className="pt-6 space-y-4">
+                                    {reviewData.length > 0 ? (
+                                        reviewData.map((review, idx) => (
+                                            <div key={idx} className="flex items-start gap-4 bg-background p-4 rounded-lg border border-orange-500/20 shadow-sm">
+                                                <div className="shrink-0 mt-1">
+                                                    {review.isCorrect ? (
+                                                        <CheckCircle2 className="h-6 w-6 text-success" />
+                                                    ) : (
+                                                        <XCircle className="h-6 w-6 text-destructive" />
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 space-y-2">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <Badge variant="outline" className="bg-background">{review.augmented?.subtopic}</Badge>
+                                                        <Badge variant="secondary" className={`text-xs font-bold bg-white hover:bg-white ${review.augmented?.bloom_taxonomy === "Remembering" ? "text-green-600" :
+                                                            review.augmented?.bloom_taxonomy === "Understanding" ? "text-[#f97415]" :
+                                                                review.augmented?.bloom_taxonomy === "Applying" ? "text-destructive" :
+                                                                    "text-muted-foreground"
+                                                            }`}
+                                                        >{review.augmented?.bloom_taxonomy} (Review)</Badge>
+                                                    </div>
+                                                    <p className="font-medium text-foreground text-sm">{review.augmented?.question}</p>
+                                                    <p className="text-xs text-muted-foreground pt-1 border-t">
+                                                        <span className="font-semibold text-foreground">Answered: </span>
+                                                        {review.augmented?.answer}
                                                     </p>
                                                 </div>
                                             </div>
-
-                                            {/* Result Icon Indicator */}
-                                            <div className="shrink-0 mt-1">
-                                                {log.isCorrect ? (
-                                                    <div className="flex items-center text-success gap-1.5 text-sm font-bold">
-                                                        <CheckCircle2 className="h-5 w-5" />
-                                                        <span className="hidden sm:inline">Correct</span>
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex items-center text-destructive gap-1.5 text-sm font-bold">
-                                                        <XCircle className="h-5 w-5" />
-                                                        <span className="hidden sm:inline">Incorrect</span>
-                                                    </div>
-                                                )}
-                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="text-center text-muted-foreground py-8">
+                                            No review sessions have been taken yet.
                                         </div>
-                                    </div>
-                                ))}
-                            </CardContent>
-                        </Card>
-                    )}
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+                    </Tabs>
                 </div>
             </div>
         </div >

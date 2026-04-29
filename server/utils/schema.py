@@ -47,7 +47,7 @@ class Logs(BaseModel):
 
 class LogPayload(BaseModel):
     data: Logs
-    latestScores: dict[str, Any]
+    latestScores: Optional[dict[str, Any]]
     isCorrect: bool
     timestamp: datetime
 

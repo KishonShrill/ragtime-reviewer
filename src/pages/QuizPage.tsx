@@ -55,7 +55,7 @@ const QuizPage = () => {
 
     const [score, setScore] = useState(0);
     const [finished, setFinished] = useState(false);
-    const TOTAL_QUESTIONS = isTrial ? 1 : 5;
+    const TOTAL_QUESTIONS = isTrial ? 1 : 50;
     const [question, setQuestion] = useState<Question>({
         original_question_id: null,
         question: "",
@@ -110,9 +110,8 @@ const QuizPage = () => {
 
     const progress = ((currentIndex) / TOTAL_QUESTIONS) * 100;
 
-    const fetchQuestion = (overrideScores?: typeof knowledgeScores, targetIndex?: number) => {
+    const fetchQuestion = (overrideScores?: typeof knowledgeScores) => {
         const scoresToUse = overrideScores || knowledgeScores;
-        const actualIndex = targetIndex !== undefined ? targetIndex : currentIndex;
 
         const requestPayload = isTrial
             ? {
@@ -181,11 +180,11 @@ const QuizPage = () => {
         }).mapErr((err) => err).map((val) => val);
     }
 
-    const loadNewQuestion = async (overrideScores?: typeof knowledgeScores, targetIndex?: number) => {
+    const loadNewQuestion = async (overrideScores?: typeof knowledgeScores) => {
         setIsLoading(true);
         setFetchError(null);
 
-        const result = await fetchQuestion(overrideScores, targetIndex);
+        const result = await fetchQuestion(overrideScores);
         result.match(
             (data) => {
                 setQuestion(data);
@@ -290,7 +289,7 @@ const QuizPage = () => {
 
         const isCorrect = question.options[index].toLowerCase() === question.answer.toLowerCase();
 
-        // Check if incorrect and NOT Remembering to add to review list
+        // 1. Check if incorrect and NOT Remembering to add to review list (Only during Main Quiz)
         if (!isCorrect && !isReviewMode && question.bloom_taxonomy !== "Remembering") {
             setIncorrectQuestions(prev => {
                 // Prevent duplicate entries
@@ -301,50 +300,53 @@ const QuizPage = () => {
             });
         }
 
-        const updatedMasteryScore = calculateNewMasteryScore(
-            knowledgeScores?.[question.subtopic]?.mastery_score,
-            isCorrect,
-            question.bloom_taxonomy,
-            question.difficulty
-        );
-        updateKnowledgeScores(question.subtopic, updatedMasteryScore);
-
         let latestScores = knowledgeScores;
-        if (knowledgeScores[question.subtopic]) {
-            latestScores = {
-                ...knowledgeScores,
-                [question.subtopic]: {
-                    ...knowledgeScores[question.subtopic],
-                    mastery_score: updatedMasteryScore
-                }
-            };
-        }
 
-        if (isCorrect) {
-            // Only increase overall quiz score if not in review mode
-            if (!isReviewMode) setScore((s) => s + 1);
-            toast({ title: "✅ Correct!", description: `Score updated to ${updatedMasteryScore}` });
+        // 2. SCORING LOGIC: Only update scores if it is the MAIN quiz
+        if (!isReviewMode) {
+            const updatedMasteryScore = calculateNewMasteryScore(
+                knowledgeScores?.[question.subtopic]?.mastery_score,
+                isCorrect,
+                question.bloom_taxonomy,
+                question.difficulty
+            );
+            updateKnowledgeScores(question.subtopic, updatedMasteryScore);
+
+            if (knowledgeScores[question.subtopic]) {
+                latestScores = {
+                    ...knowledgeScores,
+                    [question.subtopic]: {
+                        ...knowledgeScores[question.subtopic],
+                        mastery_score: updatedMasteryScore
+                    }
+                };
+            }
+
+            if (isCorrect) {
+                setScore((s) => s + 1);
+                toast({ title: "✅ Correct!", description: `Score updated to ${updatedMasteryScore}` });
+            } else {
+                toast({
+                    variant: "destructive",
+                    title: "❌ Wrong!",
+                    description: `Score dropped to ${updatedMasteryScore}`,
+                });
+            }
         } else {
-            // remake this later using the mongodb for prod
-            //await fetch(`${baseUrl}/retry`, {
-            //  method: "POST",
-            //  headers: {
-            //    "Content-Type": "application/json",
-            //    "Authorization": `Bearer ${token}`
-            //  },
-            //  body: JSON.stringify(question),
-            //});
-
-            toast({
-                variant: "destructive",
-                title: "❌ Wrong!",
-                description: `Score dropped to ${updatedMasteryScore}`,
-            });
+            // Custom toast for Review Mode (No score updates!)
+            if (isCorrect) {
+                toast({ title: "✅ Correct!", description: "Great job reviewing this concept!" });
+            } else {
+                toast({ variant: "destructive", title: "❌ Tricky Concept!", description: "Keep practicing, you'll get it." });
+            }
         }
 
+        // 3. DATABASE LOGGING: Route to the correct backend collection
         const currentTime = new Date().toISOString();
+        const endpoint = isReviewMode ? "/api/reviews" : "/api/logs"; // <-- Routes to new collection!
+
         ResultAsync.fromPromise(
-            fetch(`${backendUrl}/api/logs`, {
+            fetch(`${backendUrl}${endpoint}`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -357,14 +359,16 @@ const QuizPage = () => {
                     timestamp: currentTime,
                 }),
             }),
-            (error) => ({ title: "Unreachable Server", reason: `Network Error: ${String(error)}` })).mapErr(() => {
-                toast({
-                    variant: "destructive",
-                    title: "Unreachable Server",
-                    description: `Network Error: Logging did not go through...`
-                })
-            })
+            (error) => ({ title: "Unreachable Server", reason: `Network Error: ${String(error)}` })
+        ).mapErr(() => {
+            toast({
+                variant: "destructive",
+                title: "Unreachable Server",
+                description: `Network Error: Logging did not go through...`
+            });
+        });
 
+        // 4. NEXT QUESTION TIMEOUT
         setTimeout(() => {
             if (isReviewMode) {
                 // If reviewing, return to the finish screen after answering
@@ -373,12 +377,11 @@ const QuizPage = () => {
                 setSelected(null);
                 setShowResult(false);
             } else if (currentIndex + 1 < TOTAL_QUESTIONS) {
-                const nextIndex = currentIndex + 1;
                 setCurrentIndex((i) => i + 1);
                 setShowFallback(false);
                 setSelected(null);
                 setShowResult(false);
-                loadNewQuestion(latestScores, nextIndex);
+                loadNewQuestion(latestScores);
             } else {
                 setFinished(true);
             }
