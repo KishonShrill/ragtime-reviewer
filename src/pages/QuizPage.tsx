@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, XCircle, ArrowLeft, Trophy } from "lucide-react";
+import { CheckCircle2, XCircle, ArrowLeft, Trophy, RotateCcw } from "lucide-react";
 import { ResultAsync, errAsync, okAsync } from "neverthrow";
 import QuizImageViewer from "@/components/QuizImageViewer";
 import type { Question } from "@/types/question";
@@ -26,19 +26,10 @@ const SCORING_MATRIX: ScoringMatrixType = {
 };
 
 function calculateNewMasteryScore(currentScore: number, isCorrect: boolean, bloomLevel: string, difficulty: string) {
-    // 1. Determine if we are looking at the reward or penalty matrix
     const resultType: string = isCorrect ? "correct" : "incorrect";
-
-    // 2. Fetch the exact modifier. (The '?.' safely handles any weird unexpected inputs)
     const delta: number = SCORING_MATRIX[resultType][bloomLevel]?.[difficulty] || 0.0;
-
-    // 3. Apply the math
     let newScore = isCorrect ? currentScore + delta : currentScore - delta;
-
-    // 4. Bound the score between 0.0 and 1.0
     newScore = Math.max(0.0, Math.min(1.0, newScore));
-
-    // 5. Clean up JavaScript floating point errors (e.g., returns 0.62 instead of 0.6200000001)
     return Math.round(newScore * 100) / 100;
 };
 
@@ -64,8 +55,9 @@ const QuizPage = () => {
 
     const [score, setScore] = useState(0);
     const [finished, setFinished] = useState(false);
-    const TOTAL_QUESTIONS = isTrial ? 1 : 50;
+    const TOTAL_QUESTIONS = isTrial ? 1 : 5;
     const [question, setQuestion] = useState<Question>({
+        original_question_id: null,
         question: "",
         description: "",
         options: [],
@@ -78,6 +70,10 @@ const QuizPage = () => {
         mockMessage: null
     });
 
+    // NEW: Review Session States
+    const [incorrectQuestions, setIncorrectQuestions] = useState<Question[]>([]);
+    const [isReviewMode, setIsReviewMode] = useState(false);
+
     useEffect(() => {
         if (!token) {
             toast({
@@ -87,31 +83,28 @@ const QuizPage = () => {
             navigate("/");
         }
 
-        // If they didn't click the start button (state is null/undefined)
         if (!location.state?.started) {
             toast({
                 variant: "destructive",
                 title: "Unaccessible",
                 description: "Please start the quiz on selection page",
             });
-            // Use replace: true so they don't get stuck in a back-button loop
             navigate("/select", { replace: true });
         }
     }, [token, navigate, location]);
-    if (!token || !location.state?.started) return null;
+
 
     useEffect(() => {
         if (token) loadNewQuestion();
     }, [token]);
 
     useEffect(() => {
-        let timer: number; // Browser setTimeout returns a number ID
+        let timer: number;
         if (isLoading || !question) {
             timer = window.setTimeout(() => {
                 setShowFallback(true);
             }, 7000);
         }
-
         return () => clearTimeout(timer);
     }, [isLoading, question]);
 
@@ -120,15 +113,12 @@ const QuizPage = () => {
     const fetchQuestion = (overrideScores?: typeof knowledgeScores, targetIndex?: number) => {
         const scoresToUse = overrideScores || knowledgeScores;
         const actualIndex = targetIndex !== undefined ? targetIndex : currentIndex;
-        console.log(`${actualIndex}. Question`)
-
-        // console.log("Fetching with scores:", JSON.stringify(scoresToUse));
 
         const requestPayload = isTrial
             ? {
                 is_trial: true,
-                question_id: trialQuestionId, // Passes the exact ID if available
-                subject: trialSubject,        // Fallbacks for the Selection dropdowns
+                question_id: trialQuestionId,
+                subject: trialSubject,
                 difficulty: trialDifficulty
             }
             : {
@@ -137,8 +127,6 @@ const QuizPage = () => {
             };
 
         const endpoint = isTrial ? "/api/ai/trial" : "/api/ai/question";
-        console.log(`${backendUrl}${endpoint}`)
-        console.log(requestPayload)
 
         return ResultAsync.fromPromise(
             fetch(`${backendUrl}${endpoint}`, {
@@ -164,48 +152,33 @@ const QuizPage = () => {
                         reason: data?.detail?.reason || "An unknown error occurred"
                     });
                 }
-
-                // initializeSetup(data as AuthResponseData, cleanUrl);
-                // console.log(`Raw: ${JSON.stringify(data)}`)
-
-                // 1. Extract the actual generated question data
+                console.log(data)
                 const aiQuestion = data.result.response;
-                aiQuestion.original_question_id = data.queries.question_id;
-                aiQuestion.original_question = data.queries.question;
+                aiQuestion.original_question_id = data.queries?.question_id;
+                aiQuestion.original_question = data.queries?.question;
                 aiQuestion.execution_time = data.execution_time_seconds;
 
-                const questionIndex = data.log_count % TOTAL_QUESTIONS
-                if (questionIndex != 0)
-                    setCurrentIndex(questionIndex)
+                const questionIndex = data.log_count % TOTAL_QUESTIONS;
+                if (questionIndex != 0) setCurrentIndex(questionIndex);
 
                 if (typeof aiQuestion === 'string') {
                     return errAsync({
                         title: "Backend Generation Error",
-                        reason: data.result.error // Shows the Python error in your toast notification
+                        reason: data.result.error
                     });
                 }
 
-                // 2. Attach the image from the original seed query
                 aiQuestion.image = data.queries?.image || null;
                 aiQuestion.description = data.queries?.description || null;
-                console.log(aiQuestion.image)
 
-                // 3. Check for the mock fallback error and pass it to the component
                 if (data.result.error) {
                     aiQuestion.isMock = true;
                     aiQuestion.mockMessage = data.result.error;
                 }
                 console.log(aiQuestion)
-                // console.log({ aiQuestion })
                 return okAsync(aiQuestion);
             });
-        }).mapErr((err) => {
-            // Ensure loading is off on error
-            return err;
-        }).map((val) => {
-            // Ensure loading is off on success
-            return val;
-        });
+        }).mapErr((err) => err).map((val) => val);
     }
 
     const loadNewQuestion = async (overrideScores?: typeof knowledgeScores, targetIndex?: number) => {
@@ -217,8 +190,6 @@ const QuizPage = () => {
             (data) => {
                 setQuestion(data);
                 setIsLoading(false);
-
-                // Warn the user if they are receiving the mock fallback
                 if (data.isMock) {
                     toast({
                         variant: "destructive",
@@ -235,6 +206,83 @@ const QuizPage = () => {
         );
     };
 
+    // NEW: Review Session Fetch Logic
+    const startReview = async (q: Question) => {
+        // 1. Calculate downgraded taxonomy
+        const downgradedBloom = q.bloom_taxonomy === "Applying" ? "Understanding" : "Remembering";
+
+        // 2. Remove it from the list so they can't review it twice
+        setIncorrectQuestions(prev => prev.filter(item => item !== q));
+
+        // 3. Setup UI states
+        setIsReviewMode(true);
+        setFinished(false);
+        setIsLoading(true);
+        setFetchError(null);
+        setSelected(null);
+        setShowResult(false);
+
+        // 4. Request the specific downgraded question using the trial endpoint
+        const requestPayload = {
+            question_id: q.original_question_id || null,
+            question: q.question, // Send the text they got wrong
+            answer: q.answer,     // Send the answer they missed
+            subtopic: q.subtopic,
+            difficulty: q.difficulty,
+            current_bloom: q.bloom_taxonomy,
+            target_bloom: downgradedBloom,
+            image: q.image,
+            description: q.description,
+            is_review: true // Helpful flag for backend tracing
+        };
+
+        const result = await ResultAsync.fromPromise(
+            fetch(`${backendUrl}/api/ai/review`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestPayload),
+            }),
+            (error) => ({ title: "Unreachable Server", reason: `Network Error: ${String(error)}` })
+        ).andThen(response => {
+            if (response.status === 404) return errAsync({ title: "Unreachable Server", reason: "The backend link is wrong." });
+            return ResultAsync.fromPromise(response.json(), () => ({ title: "Parsing Error", reason: "Failed to parse response..." }))
+                .andThen(data => {
+                    if (!response.ok) return errAsync({ title: data?.detail?.title || "Error", reason: data?.detail?.reason || "An unknown error occurred" });
+
+                    const aiQuestion = data.result.response;
+                    aiQuestion.original_question_id = data.queries?.question_id;
+                    aiQuestion.original_question = data.queries?.question;
+                    aiQuestion.execution_time = data.execution_time_seconds;
+                    aiQuestion.image = data.queries?.image || null;
+                    aiQuestion.description = data.queries?.description || null;
+
+                    if (data.result.error) {
+                        aiQuestion.isMock = true;
+                        aiQuestion.mockMessage = data.result.error;
+                    }
+                    return okAsync(aiQuestion);
+                });
+        });
+
+        result.match(
+            (data) => {
+                setQuestion(data);
+                setIsLoading(false);
+                if (data.isMock) {
+                    toast({ variant: "destructive", title: "Offline Mode", description: data.mockMessage });
+                }
+            },
+            (err) => {
+                toast({ variant: "destructive", title: err.title, description: err.reason });
+                setFetchError(err);
+                setIsLoading(false);
+            }
+        );
+    };
+
     const handleAnswer = (index: number) => {
         if (showResult) return;
         setSelected(index);
@@ -242,12 +290,22 @@ const QuizPage = () => {
 
         const isCorrect = question.options[index].toLowerCase() === question.answer.toLowerCase();
 
-        // Calculate the new adaptive score
+        // Check if incorrect and NOT Remembering to add to review list
+        if (!isCorrect && !isReviewMode && question.bloom_taxonomy !== "Remembering") {
+            setIncorrectQuestions(prev => {
+                // Prevent duplicate entries
+                if (!prev.some(q => q.original_question_id === question.original_question_id)) {
+                    return [...prev, question];
+                }
+                return prev;
+            });
+        }
+
         const updatedMasteryScore = calculateNewMasteryScore(
-            knowledgeScores?.[question.subtopic]?.mastery_score,       // Current score (e.g., 0.5)
-            isCorrect,                                                 // True or False
-            question.bloom_taxonomy,                                   // e.g., "Understanding"
-            question.difficulty                                        // e.g., "Medium"
+            knowledgeScores?.[question.subtopic]?.mastery_score,
+            isCorrect,
+            question.bloom_taxonomy,
+            question.difficulty
         );
         updateKnowledgeScores(question.subtopic, updatedMasteryScore);
 
@@ -263,11 +321,10 @@ const QuizPage = () => {
         }
 
         if (isCorrect) {
-            setScore((s) => s + 1);
+            // Only increase overall quiz score if not in review mode
+            if (!isReviewMode) setScore((s) => s + 1);
             toast({ title: "✅ Correct!", description: `Score updated to ${updatedMasteryScore}` });
         } else {
-            // Simulate POST to /retry
-
             // remake this later using the mongodb for prod
             //await fetch(`${baseUrl}/retry`, {
             //  method: "POST",
@@ -309,20 +366,26 @@ const QuizPage = () => {
             })
 
         setTimeout(() => {
-            if (currentIndex + 1 < TOTAL_QUESTIONS) {
-                const nextIndex = currentIndex + 1; // Calculate it once
-
+            if (isReviewMode) {
+                // If reviewing, return to the finish screen after answering
+                setFinished(true);
+                setIsReviewMode(false);
+                setSelected(null);
+                setShowResult(false);
+            } else if (currentIndex + 1 < TOTAL_QUESTIONS) {
+                const nextIndex = currentIndex + 1;
                 setCurrentIndex((i) => i + 1);
                 setShowFallback(false);
                 setSelected(null);
                 setShowResult(false);
-
                 loadNewQuestion(latestScores, nextIndex);
             } else {
                 setFinished(true);
             }
         }, 1500);
     };
+
+    if (!token || !location.state?.started) return null;
 
     if (fetchError) {
         return (
@@ -362,10 +425,8 @@ const QuizPage = () => {
             <div className="flex min-h-screen items-center justify-center bg-background">
                 <div className="flex flex-col items-center gap-6 text-center">
                     <div className="animate-pulse text-xl font-medium text-muted-foreground">
-                        Loading your next challenge...
+                        {isReviewMode ? "Downgrading difficulty logic..." : "Loading your next challenge..."}
                     </div>
-
-                    {/* Conditional Rendering based on the 15s timer */}
                     {showFallback && (
                         <div className="flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                             <p className="text-sm text-destructive max-w-75">
@@ -381,6 +442,7 @@ const QuizPage = () => {
             </div>
         );
     }
+
     if (finished) {
         return (
             <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -402,7 +464,38 @@ const QuizPage = () => {
                                     ? "Good effort! Keep learning."
                                     : "Keep practicing, you'll improve!"}
                         </p>
-                        <p className="text-muted-foreground text-sm italic">
+
+                        {/* NEW: Review Section */}
+                        {incorrectQuestions.length > 0 && (
+                            <div className="mt-6 border-t pt-4 text-left">
+                                <h4 className="text-sm font-bold text-foreground mb-1 flex items-center gap-2">
+                                    <RotateCcw className="h-4 w-4" /> Review Incorrect Questions
+                                </h4>
+                                <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+                                    Retrying will test you on a downgraded Bloom's Taxonomy level to help build up your fundamentals.
+                                </p>
+                                <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                                    {incorrectQuestions.map((iq, idx) => (
+                                        <Button
+                                            key={idx}
+                                            variant="outline"
+                                            className="cursor-pointer w-full justify-start text-left h-auto py-2 px-3 flex-col items-start gap-1.5"
+                                            onClick={() => startReview(iq)}
+                                        >
+                                            <span className="text-xs font-semibold line-clamp-2 whitespace-normal">{iq.question}</span>
+                                            <div className="flex items-center gap-2 w-full">
+                                                <Badge variant="secondary" className="text-[9px] px-1.5">{iq.subtopic}</Badge>
+                                                <Badge variant="outline" className="text-[9px] px-1.5 text-destructive ml-auto">
+                                                    {iq.bloom_taxonomy} &rarr; {iq.bloom_taxonomy === 'Applying' ? 'Understanding' : 'Remembering'}
+                                                </Badge>
+                                            </div>
+                                        </Button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        <p className="text-muted-foreground text-sm italic pt-4">
                             Results have been synchronized with the server at: <br />
                             <span className="text-xs font-mono opacity-70">{backendUrl}</span>
                         </p>
@@ -418,6 +511,7 @@ const QuizPage = () => {
                                         setSelected(null);
                                         setShowResult(false);
                                         setFinished(false);
+                                        setIncorrectQuestions([]); // Clear reviews on a fresh start
                                         loadNewQuestion();
                                     }}
                                 >
@@ -440,11 +534,19 @@ const QuizPage = () => {
                 <CardHeader className="space-y-3">
                     <div className="flex items-center justify-between text-sm text-muted-foreground">
                         <span>
-                            Question {currentIndex + 1} of {TOTAL_QUESTIONS}
+                            {isReviewMode ? (
+                                <span className="font-bold flex items-center gap-2 text-[#f97415]">
+                                    <RotateCcw className="h-4 w-4" /> Review Session
+                                </span>
+                            ) : (
+                                `Question ${currentIndex + 1} of ${TOTAL_QUESTIONS}`
+                            )}
                         </span>
-                        <span className="font-semibold text-primary">Score: {score}</span>
+                        {!isReviewMode && <span className="font-semibold text-primary">Score: {score}</span>}
                     </div>
-                    <Progress value={progress} className="h-2" />
+
+                    {!isReviewMode && <Progress value={progress} className="h-2" />}
+
                     {question.description && (
                         <p className="text-sm text-muted-foreground italic">{question.description}</p>
                     )}
@@ -453,19 +555,15 @@ const QuizPage = () => {
                     )}
                     <CardTitle className="text-xl font-bold text-foreground">{question.question}</CardTitle>
 
-                    {/* NEW: Question Metadata Badges */}
+                    {/* Question Metadata Badges */}
                     <div id="metadata" className="flex flex-wrap items-center gap-2 pt-1">
                         {question.subtopic && (
-                            <Badge
-                                variant="secondary"
-                                className={`text-xs font-bold`}
-                            >
+                            <Badge variant="secondary" className={`text-xs font-bold`}>
                                 {question.subtopic}
                             </Badge>
                         )}
                         {question.difficulty && (
-                            <Badge
-                                variant="outline"
+                            <Badge variant="outline"
                                 className={`text-xs font-normal ${question.difficulty === "Easy" ? "bg-green-600 text-white font-bold" :
                                     question.difficulty === "Medium" ? "bg-[#f97415] text-white font-bold" :
                                         question.difficulty === "Hard" ? "bg-red-500 text-white font-bold" :
@@ -476,8 +574,7 @@ const QuizPage = () => {
                             </Badge>
                         )}
                         {question.bloom_taxonomy && (
-                            <Badge
-                                variant="outline"
+                            <Badge variant="outline"
                                 className={`text-xs font-bold ${question.bloom_taxonomy === "Remembering" ? "text-green-600" :
                                     question.bloom_taxonomy === "Understanding" ? "text-[#f97415]" :
                                         question.bloom_taxonomy === "Applying" ? "text-destructive" :
@@ -531,4 +628,3 @@ const QuizPage = () => {
 };
 
 export default QuizPage;
-

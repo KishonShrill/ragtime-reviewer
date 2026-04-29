@@ -1,4 +1,5 @@
 export interface Question {
+    original_question_id: string | null;
     question: string;
     description: string;
     options: string[];

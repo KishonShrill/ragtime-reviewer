@@ -77,3 +77,14 @@ class User(BaseModel):
     role: str
     knowledge_scores: Subtopics
     access_token: Optional[str] = None
+
+class ReviewRequest(BaseModel):
+    question_id: Optional[str] = None
+    question: str
+    answer: str
+    subtopic: str
+    difficulty: str
+    current_bloom: str
+    target_bloom: str
+    image: Optional[str] = None
+    description: Optional[str] = None

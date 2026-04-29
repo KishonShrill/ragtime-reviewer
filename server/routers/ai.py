@@ -1,6 +1,6 @@
 from typing import Any, Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
-from utils.schema import QuestionRequest, LogicEngineResponse, QuestionResponse
+from utils.schema import QuestionRequest, LogicEngineResponse, QuestionResponse, ReviewRequest
 from utils.db import get_question, get_logs_count, get_specific_question
 from utils.engine import prepare_next_question
 from utils.token import user_required, admin_required
@@ -37,6 +37,19 @@ async def get_rag_question(
             "WARNING: The seed question relies on an accompanying image/graph. You MUST phrase your new question so that it explicitly describes the visual scenario, or clearly references 'the provided diagram'."
         )
 
+    subtopic_instruction = ""
+    subtopic = str(fetched_item.get("subtopic", "")).lower()
+    
+    if "Biology" in subtopic or "genetics" in subtopic:
+        subtopic_instruction = "BIOLOGY SPECIFIC: Strictly preserve specific biological entities (e.g., organism names, strains), molecule labels (e.g., X, Y, Z), and phenotypic traits. Do NOT over-generalize or remove crucial contextual details."
+    elif "Chemistry" in subtopic:
+        subtopic_instruction = "CHEMISTRY SPECIFIC: Preserve exact chemical formulas, reaction states, and stoichiometric coefficients."
+    elif "Physics" in subtopic:
+        subtopic_instruction = "PHYSICS SPECIFIC: Retain exact physical constants, units of measurement, and specific situational setups (e.g., 'a 5kg block on a 30-degree incline')."
+    elif "General Science" in subtopic:
+        subtopic_instruction = "GENERAL SCIENCE SPECIFIC: Maintain the exact experimental setup, control variables, specific materials mentioned (e.g., soil types, liquids), and observational data. Only alter the descriptive phrasing of the scenario, not the physical parameters of the experiment itself."
+    # ------------------------------------------
+    
     messages = [
         {
             "role": "system",
@@ -49,6 +62,8 @@ async def get_rag_question(
                 "4. OPTIONS: Provide exactly 4 multiple-choice options. One of them MUST be the exact Correct Answer.\n"
                 "5. FORMAT: Output only a single valid JSON object.\n"
                 f"{image_instruction}\n"
+                f"{subtopic_instruction}\n"
+
             )
         },
         {
@@ -189,6 +204,161 @@ async def get_rag_question(
         "execution_time_seconds": round(generation_time, 3)
     }
 
+@router.post("/review")
+async def get_review_question( 
+        user: Annotated[dict[str,str], Depends(dependency=user_required)],
+        request: ReviewRequest) -> dict[str, Any]:
+    
+    print(f"🔧 REVIEW SCAFOLDING REQUEST: {request.current_bloom} -> {request.target_bloom}")
+    
+    image_instruction = ""
+    if request.image:
+        image_instruction = (
+            "WARNING: The seed question relies on an accompanying image/graph. You MUST phrase your new question so that it explicitly describes the visual scenario, or clearly references 'the provided diagram'."
+        )
+
+    subtopic_instruction = ""
+    subtopic = request.subtopic.lower()
+    
+    if "Biology" in subtopic or "genetics" in subtopic:
+        subtopic_instruction = "BIOLOGY SPECIFIC: Strictly preserve specific biological entities (e.g., organism names, strains), molecule labels (e.g., X, Y, Z), and phenotypic traits. Do NOT over-generalize or remove crucial contextual details."
+    elif "Chemistry" in subtopic:
+        subtopic_instruction = "CHEMISTRY SPECIFIC: Preserve exact chemical formulas, reaction states, and stoichiometric coefficients."
+    elif "Physics" in subtopic:
+        subtopic_instruction = "PHYSICS SPECIFIC: Retain exact physical constants, units of measurement, and specific situational setups (e.g., 'a 5kg block on a 30-degree incline')."
+    elif "General Science" in subtopic:
+        subtopic_instruction = "GENERAL SCIENCE SPECIFIC: Maintain the exact experimental setup, control variables, specific materials mentioned (e.g., soil types, liquids), and observational data. Only alter the descriptive phrasing of the scenario, not the physical parameters of the experiment itself."
+    # --- EDUCATIONAL SCAFFOLDING PROMPT ---
+    
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are an expert Science Assessment AI. A student incorrectly answered a question at the higher "
+                f"'{request.current_bloom}' cognitive level. Your task is to DOWNGRADE this question to the "
+                f"'{request.target_bloom}' level in Bloom's Taxonomy to help them review the fundamental concepts.\n"
+                "Strictly adhere to these rules:\n"
+                "1. DOWNGRADE: Simplify the cognitive load. If targeting 'Understanding', focus on explaining, summarizing, or identifying relationships rather than calculating/solving. If targeting 'Remembering', focus on basic recall, definitions, or facts.\n"
+                "2. CONSERVATION: Test the exact same underlying scientific concept as the Seed Question.\n"
+                "3. ADAPTATION: You MUST adapt or change the Correct Answer to fit the new downgraded question format. Ensure it remains scientifically accurate.\n"
+                "4. OPTIONS: Provide exactly 4 completely UNIQUE multiple-choice options. Do not provide the same option twice with different capitalizations. One of them MUST be the exact Correct Answer.\n"
+                "5. FORMAT: Output only a single valid JSON object.\n"
+                f"{image_instruction}\n"
+                f"{subtopic_instruction}\n"
+            )
+        },
+        {
+            "role": "user",
+            "content": f"""
+                Seed Question ({request.current_bloom}): '{request.question}'
+                Original Answer: '{request.answer}'
+                Target Taxonomy: '{request.target_bloom}'
+                Difficulty: '{request.difficulty}'
+                Subtopic: '{request.subtopic}'
+
+                Task: Create a downgraded variation of this question.
+
+                Output JSON format:
+                {{
+                "question": "...",
+                "options": ["...", "...", "...", "..."],
+                "answer": "...",
+                "bloom_taxonomy": "{request.target_bloom}",
+                "difficulty": "{request.difficulty}",
+                "subtopic": "{request.subtopic}"
+                }}"""
+        }
+    ]
+
+    start_time = time.perf_counter()
+
+    try:
+        response = await AsyncClient(host='http://127.0.0.1:11434').chat(
+            model='llama3.1:8b', 
+            messages=messages,
+            format='json'
+        )
+        end_time = time.perf_counter()
+        clean_result = {"error": False, "response": json.loads(response.message.content)}
+
+    except json.JSONDecodeError:
+        clean_result = {"error": "Invalid Json Returned", "response": response.message.content}
+        end_time = time.perf_counter()
+
+    except Exception as e:
+        print(f"⚠️ Ollama Generation Failed: {e}. Falling back to mock data.")
+        end_time = time.perf_counter()
+        
+        clean_result = {
+            "error": "Offline mode for debugging!", 
+            "response": {
+                "question": f"[MOCK DOWNGRADE to {request.target_bloom}] {request.question}",
+                "options": [
+                    f"Simulated {request.target_bloom} Answer",
+                    "Generated Distractor A",
+                    "Generated Distractor B",
+                    "Generated Distractor C"
+                ],
+                "answer": f"Simulated {request.target_bloom} Answer",
+                "bloom_taxonomy": request.target_bloom,
+                "difficulty": request.difficulty,
+                "subtopic": request.subtopic
+            }
+        }
+
+    # --- THE SMART SAFETY SHUFFLE & DEDUPLICATION ---
+    try:
+        response_dict = clean_result.get("response", {})
+        raw_options = response_dict.get("options", [])
+        
+        # NOTE: We use the LLM's NEW answer here, not the original seed answer!
+        answer = response_dict.get("answer")
+
+        def is_text_duplicate(a: str, b: str) -> bool:
+            if a == b: return True 
+            if a.lower() != b.lower(): return False 
+            if len(a) <= 2: return False 
+            if re.search(r'[0-9\+\-\=\>\<\→\(\)\[\]]', a): return False 
+            if re.search(r'\B[A-Z]', a) or re.search(r'\B[A-Z]', b): return False 
+            return True
+
+        if isinstance(raw_options, list) and answer:
+            ans_str = str(answer).strip()
+            final_options = [ans_str]
+
+            for opt in raw_options:
+                val = str(opt).strip()
+                is_dup = False
+                for existing in final_options:
+                    if is_text_duplicate(val, existing):
+                        is_dup = True
+                        break
+                if not is_dup:
+                    final_options.append(val)
+
+            fallbacks = ["None of the above", "All of the above", "Cannot be determined", "Not enough information"]
+            fb_idx = 0
+            while len(final_options) < 4 and fb_idx < len(fallbacks):
+                fb = fallbacks[fb_idx]
+                if not any(is_text_duplicate(fb, existing) for existing in final_options):
+                    final_options.append(fb)
+                fb_idx += 1
+
+            final_options = final_options[:4]
+            rng.shuffle(final_options)
+            clean_result["response"]["options"] = final_options
+
+    except Exception as e:
+        clean_result = {"error": "Failed to deduplicate and shuffle options", "response": str(e)}
+
+    generation_time = end_time - start_time
+
+    return {
+        "queries": {"question_id": request.question_id, "image": request.image, "description": request.description},
+        "result": clean_result,
+        "log_count": 1,
+        "execution_time_seconds": round(generation_time, 3)
+    }
 
 @router.post("/trial")
 async def get_trial_question( 
@@ -218,6 +388,19 @@ async def get_trial_question(
             "WARNING: The seed question relies on an accompanying image/graph. You MUST phrase your new question so that it explicitly describes the visual scenario, or clearly references 'the provided diagram'."
         )
 
+    subtopic_instruction = ""
+    subtopic = str(seed_item.get("subtopic", "")).lower()
+    
+    if "Biology" in subtopic or "genetics" in subtopic:
+        subtopic_instruction = "BIOLOGY SPECIFIC: Strictly preserve specific biological entities (e.g., organism names, strains), molecule labels (e.g., X, Y, Z), and phenotypic traits. Do NOT over-generalize or remove crucial contextual details."
+    elif "Chemistry" in subtopic:
+        subtopic_instruction = "CHEMISTRY SPECIFIC: Preserve exact chemical formulas, reaction states, and stoichiometric coefficients."
+    elif "Physics" in subtopic:
+        subtopic_instruction = "PHYSICS SPECIFIC: Retain exact physical constants, units of measurement, and specific situational setups (e.g., 'a 5kg block on a 30-degree incline')."
+    elif "General Science" in subtopic:
+        subtopic_instruction = "GENERAL SCIENCE SPECIFIC: Maintain the exact experimental setup, control variables, specific materials mentioned (e.g., soil types, liquids), and observational data. Only alter the descriptive phrasing of the scenario, not the physical parameters of the experiment itself."
+    # ------------------------------------------
+    
     messages = [
         {
             "role": "system",
@@ -230,6 +413,7 @@ async def get_trial_question(
                 "4. OPTIONS: Provide exactly 4 multiple-choice options. One of them MUST be the exact Correct Answer.\n"
                 "5. FORMAT: Output only a single valid JSON object.\n"
                 f"{image_instruction}\n"
+                f"{subtopic_instruction}\n"
             )
         },
         {
