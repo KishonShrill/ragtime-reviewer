@@ -10,7 +10,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Zap, PlayCircle, LogOut, Database, Shield, BookOpen, UserCircle, FileText, QrCode, ExternalLink } from "lucide-react";
+import { Zap, PlayCircle, LogOut, Database, Shield, BookOpen, UserCircle, FileText, QrCode, ExternalLink, FileCode, Download } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -154,6 +154,35 @@ const SelectionPage = () => {
                         >
                             <PlayCircle className="h-6 w-6" />
                             Start Adaptive Quiz
+                        </Button>
+                    </div>
+
+                    {/* --- COURSE MATERIALS / DOWNLOADS (Visible to Everyone) --- */}
+                    <div className="pt-6 border-t border-border/60 flex flex-col items-center text-center space-y-4">
+                        <div className="space-y-1">
+                            <h3 className="font-bold text-foreground flex items-center justify-center gap-2">
+                                <FileCode className="h-4 w-4 text-primary" />
+                                Interactive Materials
+                            </h3>
+                            <p className="text-xs text-muted-foreground">
+                                Download the required Google Colab files for your offline review sessions.
+                            </p>
+                        </div>
+
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            asChild
+                            className="w-full bg-blue-50/50 hover:bg-blue-100/50 text-blue-700 border-blue-200"
+                        >
+                            <a
+                                href="https://we.tl/t-8BJ273u8Toz01Bx1"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >
+                                <Download className="h-4 w-4 mr-2" />
+                                Download Colab File via WeTransfer
+                            </a>
                         </Button>
                     </div>
 
