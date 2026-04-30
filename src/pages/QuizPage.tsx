@@ -184,6 +184,7 @@ const QuizPage = () => {
     const loadNewQuestion = async (overrideScores?: typeof knowledgeScores) => {
         setIsLoading(true);
         setFetchError(null);
+        setShowFallback(false);
 
         const result = await fetchQuestion(overrideScores);
         result.match(
@@ -221,6 +222,7 @@ const QuizPage = () => {
         setFetchError(null);
         setSelected(null);
         setShowResult(false);
+        setShowFallback(false);
 
         // 4. Request the specific downgraded question using the trial endpoint
         const requestPayload = {
@@ -346,7 +348,7 @@ const QuizPage = () => {
         // 3. DATABASE LOGGING: Route to the correct backend collection
         const currentTime = new Date().toISOString();
         const endpoint = isReviewMode ? "/api/reviews" : "/api/logs"; // <-- Routes to new collection!
-        console.log(question)
+        //console.log(question)
         ResultAsync.fromPromise(
             fetch(`${backendUrl}${endpoint}`, {
                 method: 'POST',
@@ -516,6 +518,7 @@ const QuizPage = () => {
                                         setSelected(null);
                                         setShowResult(false);
                                         setFinished(false);
+                                        setShowFallback(false);
                                         setIncorrectQuestions([]); // Clear reviews on a fresh start
                                         loadNewQuestion();
                                     }}
