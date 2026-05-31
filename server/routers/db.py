@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from utils.token import user_required, admin_required 
 from utils.schema import SignupRequest, LoginRequest, LogPayload
-from utils.db import db, create_logs, create_reviews, get_scores_of_user, get_all_knowledge_base, get_reviews_of_user
+from utils.db import db, create_logs, create_reviews, get_scores_of_user, get_all_knowledge_base, get_reviews_of_user, get_all_execution_times
 from typing import cast, Annotated, Mapping, Any
 import os
 import json
@@ -67,3 +67,13 @@ async def save_review_log(
     data = json.dumps(payload.data.model_dump())
     print("DId i pass here?!")
     create_reviews(user=user, data=payload.data, timestamp=payload.timestamp, isCorrect=payload.isCorrect)
+
+@router.get("/metrics/latency")
+def fetch_latency_metrics(
+        user: Annotated[dict[str,str], Depends(dependency=admin_required)]
+    ) -> dict[str, Any]:
+    """
+    Fetches all execution times across all users for admin metrics and bell curve rendering.
+    Protected by admin_required dependency.
+    """
+    return get_all_execution_times()

@@ -11,7 +11,9 @@ import NotFoundPage from "./pages/NotFoundPage";
 import ProfilePage from "./pages/ProfilePage";
 import KnowledgeBasePage from "./pages/KnowledgeBase";
 import SmeValidationPrintPage from "./pages/SmeValidationPrintPage";
+import LatencyAnalyticsPage from "./pages/LatencyAnalytics";
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
+import LatencyAnalytics from "./pages/LatencyAnalytics";
 
 const queryClient = new QueryClient();
 
@@ -29,6 +31,7 @@ const App = () => (
                         <Route path="/quiz" element={<QuizPage />} />
                         <Route path="/knowledge_base" element={<KnowledgeBasePage />} />
                         <Route path="/sme-validation" element={<SmeValidationPrintPage />} />
+                        <Route path="/latency" element={<LatencyAnalyticsPage />} />
                         <Route path="*" element={<NotFoundPage />} />
                     </Routes>
                 </BrowserRouter>

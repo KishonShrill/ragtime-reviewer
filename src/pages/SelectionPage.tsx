@@ -10,7 +10,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Zap, PlayCircle, LogOut, Database, Shield, BookOpen, UserCircle, FileText, QrCode, ExternalLink, FileCode, Download } from "lucide-react";
+import { Zap, PlayCircle, LogOut, Database, Shield, BookOpen, UserCircle, FileText, QrCode, ExternalLink, FileCode, Download, Activity } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -104,7 +104,7 @@ const SelectionPage = () => {
     const handleProfile = () => navigate("/profile");
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-background p-4 py-8">
+        <div className="flex min-h-screen items-center justify-center bg-background p-4">
             <Card className="w-full max-w-lg shadow-xl border-border/50">
 
                 {/* --- HEADER (Visible to Everyone) --- */}
@@ -224,28 +224,36 @@ const SelectionPage = () => {
                                 <h3 className="text-lg font-bold text-foreground tracking-tight">Admin Console</h3>
                             </div>
 
-                            {/* Admin Actions */}
-                            <div className="flex gap-4">
+                            {/* Admin Actions - Restructured to a Grid for clean alignment */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <Button
                                     variant="outline"
                                     className="w-full h-12 gap-2 justify-start px-4"
                                     onClick={() => navigate("/knowledge_base")}
                                 >
                                     <Database className="h-4 w-4 text-primary" />
-                                    Knowledge Base Explorer
+                                    Knowledge Base
                                 </Button>
 
-                                {/* SME Validation Generator Button */}
                                 <Button
                                     variant="outline"
                                     className="w-full h-12 gap-2 justify-start px-4"
                                     onClick={() => navigate("/sme-validation")}
                                 >
                                     <FileText className="h-4 w-4 text-primary" />
-                                    SME Validation Generator
+                                    SME Validation
+                                </Button>
+
+                                {/* NEW: System Latency Analytics Button */}
+                                <Button
+                                    variant="outline"
+                                    className="w-full sm:col-span-2 h-12 gap-2 justify-center px-4 border-primary/20 hover:bg-primary/5"
+                                    onClick={() => navigate("/latency")}
+                                >
+                                    <Activity className="h-4 w-4 text-primary" />
+                                    System Latency Analytics (Bell Curve)
                                 </Button>
                             </div>
-
                             {/* Test Configuration */}
                             <div className="space-y-4 p-4 bg-muted/30 rounded-lg border border-border/50">
                                 <div className="flex items-center gap-2 mb-2">

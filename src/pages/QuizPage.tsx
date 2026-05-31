@@ -55,7 +55,7 @@ const QuizPage = () => {
 
     const [score, setScore] = useState(0);
     const [finished, setFinished] = useState(false);
-    const TOTAL_QUESTIONS = isTrial ? 1 : 50;
+    const TOTAL_QUESTIONS = isTrial ? 1 : 5;
     const [question, setQuestion] = useState<Question>({
         original_question_id: null,
         question: "",

@@ -319,3 +319,38 @@ def get_all_knowledge_base() -> dict[str, Any]:
                 "reason": "Cannot fetch knowledge base from database..."
             }
         )
+
+def get_all_execution_times() -> dict[str, Any]:
+    try:
+        # 1. Fetch execution times from the main standard quizzes
+        # We use projection {"_id": 0, "execution_time": 1} to ONLY return the float value for speed
+        logs_cursor = logs.find(
+            {"execution_time": {"$exists": True, "$ne": None}}, 
+            {"_id": 0, "execution_time": 1}
+        )
+        
+        # 2. Fetch execution times from the downgraded review sessions
+        reviews_cursor = reviews.find(
+            {"execution_time": {"$exists": True, "$ne": None}}, 
+            {"_id": 0, "execution_time": 1}
+        )
+        
+        # Combine both lists of execution times into a single flat array of floats
+        execution_times = []
+        for doc in logs_cursor:
+            execution_times.append(doc["execution_time"])
+            
+        for doc in reviews_cursor:
+            execution_times.append(doc["execution_time"])
+            
+        return {"status": "success", "data": execution_times}
+        
+    except Exception as e:
+        print(f"Error fetching execution times: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail={
+                "title": "MongoDB Connection Error",
+                "reason": "Cannot fetch execution times from database..."
+            }
+        )
