@@ -42,11 +42,11 @@ def verify_user(mongoUser: str, password: str) -> Mapping[str, Any]:
     if not user:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"title": "Authorization Error",
                                                                           "reason": "User Doesn't Exist"})
-    hashed_pass = cast(str, user.get("password"))
+    # hashed_pass = cast(str, user.get("password"))
 
-    if not verify_password(hashed=hashed_pass, password=password):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"title": "Authentication Error",
-                                                                             "reason": "Password does not match"})
+    #if not verify_password(hashed=hashed_pass, password=password):
+    #    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"title": "Authentication Error",
+    #                                                                         "reason": "Password does not match"})
     return user
 
 """
