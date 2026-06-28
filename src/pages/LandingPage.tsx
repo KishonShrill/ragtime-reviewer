@@ -12,11 +12,11 @@ const LandingPage = () => {
     const [isLogin, setIsLogin] = useState<boolean>(true);
     const [username, setUsername] = useState<string>("");
     const [email, setEmail] = useState<string>("")
-    const [backendUrl, setBackendUrl] = useState<string>("");
     const [password, setPassword] = useState<string>("");
     const [secret, setSecret] = useState<string>("");
     const [loading, setLoading] = useState<boolean>(false);
 
+    const backendUrl = "http://localhost:8000";
     const { login, signup, token, user } = useAuth();
     const navigate = useNavigate();
     const { toast } = useToast();
@@ -113,17 +113,6 @@ const LandingPage = () => {
                                 placeholder="••••••••"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                required
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label htmlFor="backendUrl">Backend URL</Label>
-                            <Input
-                                id="backendUrl"
-                                placeholder="https://api.quizapp.com"
-                                value={backendUrl}
-                                onChange={(e) => setBackendUrl(e.target.value)}
                                 required
                             />
                         </div>

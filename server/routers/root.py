@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import datetime
-from utils.db import check_health
+from utils.db import check_health 
 import pytz
 
 router: APIRouter = APIRouter(tags=["Default"])
@@ -37,3 +37,4 @@ def read_health() -> dict[str, str | dict[str,str]]:
             "database": mongo_health,
             "model": "Llama-3.1-8B-Instruct-4bit"
             }
+

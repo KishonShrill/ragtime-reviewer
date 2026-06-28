@@ -34,19 +34,24 @@ def user_exists(username: str) -> bool:
     return False
 
 def verify_user(mongoUser: str, password: str) -> Mapping[str, Any]:
+    print(mongoUser)
+    print(password)
+    print(client)
+    print(users)
     user = users.find_one(filter={
         "$or":[
             {"username": mongoUser},
             {"email": mongoUser}
         ]})
+    print(user)
     if not user:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"title": "Authorization Error",
                                                                           "reason": "User Doesn't Exist"})
-    # hashed_pass = cast(str, user.get("password"))
+    hashed_pass = cast(str, user.get("password"))
 
-    #if not verify_password(hashed=hashed_pass, password=password):
-    #    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"title": "Authentication Error",
-    #                                                                         "reason": "Password does not match"})
+    if not verify_password(hashed=hashed_pass, password=password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"title": "Authentication Error",
+                                                                             "reason": "Password does not match"})
     return user
 
 """
@@ -165,6 +170,21 @@ def create_reviews(user: User, data: Any, timestamp: datetime, isCorrect: bool) 
         print(e)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
                                                                                        "reason": "Cannot create review for user for database..."})
+
+def insert_knowledge_base_data(data: list[dict[str, Any]]) -> int:
+    if not data:
+        return 0  # Protect against empty arrays
+        
+    # Strip '_id' to prevent Duplicate Key errors when importing exported MongoDB JSONs
+    for item in data:
+        item.pop("_id", None)
+
+    try:
+        # insert_many allows for bulk uploading the JSON array
+        result = knowledge_base.insert_many(data)
+        return len(result.inserted_ids)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload data: {str(e)}")
 
 
 def get_logs_count(user: User) -> int:

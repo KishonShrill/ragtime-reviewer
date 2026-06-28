@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -22,7 +22,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Database, Image as ImageIcon, AlignLeft, Play, ArrowLeft, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Database, Image as ImageIcon, AlignLeft, Play, Upload, ArrowLeft, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 // Define the shape of your knowledge base items
@@ -47,6 +47,7 @@ const KnowledgeBasePage = () => {
 
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Helper for difficulty badge colors
     const getDifficultyColor = (difficulty: string) => {
@@ -124,6 +125,66 @@ const KnowledgeBasePage = () => {
 
     });
 
+    const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                let jsonPayload = JSON.parse(e.target?.result as string);
+
+                // Safety check: If the JSON is an object (e.g., {"questions": [...]}), extract the array
+                if (!Array.isArray(jsonPayload)) {
+                    const extractedArray = Object.values(jsonPayload).find(val => Array.isArray(val as any));
+                    if (extractedArray) {
+                        jsonPayload = extractedArray;
+                    } else {
+                        throw new Error("JSON must contain an array of questions.");
+                    }
+                }
+
+                // Failsafe: force localhost if backendUrl is missing/stale
+                const currentUrl = backendUrl || "http://localhost:8000";
+
+                const response = await fetch(`${currentUrl}/api/knowledge_base/upload`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(jsonPayload)
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    toast({
+                        title: "Upload Successful",
+                        description: result.message
+                    });
+                    // refetch(); // Uncomment if you are using tanstack useQuery to refresh the UI table
+                } else {
+                    // Extract specific error from FastAPI
+                    const errorData = await response.json();
+                    toast({
+                        title: "Upload Error",
+                        description: errorData.detail || "Failed to upload data.",
+                        variant: "destructive"
+                    });
+                }
+            } catch (error: any) {
+                toast({
+                    title: "Format Error",
+                    description: error.message || "Invalid JSON format. Please check your file.",
+                    variant: "destructive"
+                });
+            } finally {
+                if (fileInputRef.current) fileInputRef.current.value = "";
+            }
+        };
+        reader.readAsText(file);
+    };
+
     useEffect(() => {
         // Set a timer to update the debounced term after 2000ms (2 seconds)
         const timer = setTimeout(() => {
@@ -183,6 +244,17 @@ const KnowledgeBasePage = () => {
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
+                    <input
+                        type="file"
+                        accept=".json"
+                        ref={fileInputRef}
+                        className="hidden"
+                        onChange={handleFileUpload}
+                    />
+                    <Button onClick={() => fileInputRef.current?.click()} variant="outline">
+                        <Upload className="mr-2 h-4 w-4" />
+                        Upload JSON
+                    </Button>
                 </div>
 
                 <Card className="shadow-xl border-border/50">
