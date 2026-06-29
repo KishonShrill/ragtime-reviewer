@@ -1,15 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from utils.token import user_required, admin_required 
 from utils.schema import SignupRequest, LoginRequest, LogPayload
-from utils.db import db, create_logs, create_reviews, get_scores_of_user, get_all_knowledge_base, get_reviews_of_user
-from typing import cast, Annotated, Mapping, Any
+import utils.db as db_utils
+from utils.db import db, create_logs, create_reviews
+from utils.db import get_scores_of_user, get_all_knowledge_base, get_reviews_of_user, get_all_execution_times
+from utils.db import insert_knowledge_base_data
+from typing import cast, List, Annotated, Mapping, Any
 import os
 import json
 
 
-users = db.get_collection(name="Users")
-logs = db.get_collection(name="Logs")
-reviews = db.get_collection(name="Reviews")
+# DELETE OR COMMENT OUT THESE LINES completely:
+# users = db.get_collection(name="Users")
+# logs = db.get_collection(name="Logs")
+# reviews = db.get_collection(name="Reviews")
 
 router: APIRouter = APIRouter(prefix="/api", tags=["Database"])
 
@@ -27,6 +31,19 @@ def fetch_all_knowledge_base(
     # Since the Depends(admin_required) already secures this route, 
     # we just need to return the data!
     return get_all_knowledge_base()
+
+@router.post("/knowledge_base/upload")
+def upload_knowledge_base(
+    user: Annotated[dict[str,str], Depends(dependency=admin_required)], 
+    payload: List[dict[str, Any]]
+) -> dict[str, Any]:
+    
+    inserted_count = insert_knowledge_base_data(payload)
+    return {
+        "status": "success", 
+        "inserted_count": inserted_count, 
+        "message": f"Successfully uploaded {inserted_count} questions to the Knowledge Base."
+    }
 
 @router.get("/logs")
 def fetch_question_logs(
@@ -67,3 +84,13 @@ async def save_review_log(
     data = json.dumps(payload.data.model_dump())
     print("DId i pass here?!")
     create_reviews(user=user, data=payload.data, timestamp=payload.timestamp, isCorrect=payload.isCorrect)
+
+@router.get("/metrics/latency")
+def fetch_latency_metrics(
+        user: Annotated[dict[str,str], Depends(dependency=admin_required)]
+    ) -> dict[str, Any]:
+    """
+    Fetches all execution times across all users for admin metrics and bell curve rendering.
+    Protected by admin_required dependency.
+    """
+    return get_all_execution_times()

@@ -17,6 +17,7 @@ knowledge_base = db.get_collection(name="KnowledgeBase")
 users = db.get_collection(name="Users")
 logs = db.get_collection(name="Logs")
 reviews = db.get_collection(name="Reviews")
+downgrades = db.get_collection(name="Downgrades")
 
 def check_health() -> bool:
     """Returns True if MongoDB is reachable, False otherwise"""
@@ -34,11 +35,16 @@ def user_exists(username: str) -> bool:
     return False
 
 def verify_user(mongoUser: str, password: str) -> Mapping[str, Any]:
+    print(mongoUser)
+    print(password)
+    print(client)
+    print(users)
     user = users.find_one(filter={
         "$or":[
             {"username": mongoUser},
             {"email": mongoUser}
         ]})
+    print(user)
     if not user:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"title": "Authorization Error",
                                                                           "reason": "User Doesn't Exist"})
@@ -66,7 +72,7 @@ def create_user(username: str, email: str, password: str, role: str) -> tuple[bo
     # Initialize the Cold Start profile for the 4 core Science subjects
     initial_scores_model = {
         subject: SubtopicKnowledgeScore(
-                mastery_score = 0.41, 
+                mastery_score = 0.00, 
                 rank = "Medium",  # Cold start baseline
                 weak_concepts = []
         )
@@ -166,6 +172,21 @@ def create_reviews(user: User, data: Any, timestamp: datetime, isCorrect: bool) 
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
                                                                                        "reason": "Cannot create review for user for database..."})
 
+def insert_knowledge_base_data(data: list[dict[str, Any]]) -> int:
+    if not data:
+        return 0  # Protect against empty arrays
+        
+    # Strip '_id' to prevent Duplicate Key errors when importing exported MongoDB JSONs
+    for item in data:
+        item.pop("_id", None)
+
+    try:
+        # insert_many allows for bulk uploading the JSON array
+        result = knowledge_base.insert_many(data)
+        return len(result.inserted_ids)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload data: {str(e)}")
+
 
 def get_logs_count(user: User) -> int:
     try:
@@ -235,47 +256,101 @@ def get_latest_user_scores(username: str) -> dict[str,Any] | None:
             }
         ) 
 
-def get_question(query_fields: LogicEngineResponse, excluded_ids: Optional[list[str]] = []) -> QuestionResponse:
-    try:
-        """
-        Mock function to represent fetching/generating a question from MongoDB/LLM.
-        """
-        pipeline = [
-            {
-                "$match": {
-                    "bloom_taxonomy": query_fields.bloom_taxonomy,
-                    "difficulty": query_fields.difficulty,
-                    "subtopic": query_fields.subtopic,
+def get_question(
+    query_fields: LogicEngineResponse,
+    excluded_ids: Optional[list[str]] = None
+) -> QuestionResponse:
 
-                    "id": { "$nin": excluded_ids }
-                }
-            },
-            {
-                "$sample": { "size": 1 }
+    if excluded_ids is None:
+        excluded_ids = []
+
+    pipeline = [
+        {
+            "$match": {
+                "bloom_taxonomy": query_fields.bloom_taxonomy,
+                "difficulty": query_fields.difficulty,
+                "subtopic": query_fields.subtopic,
+                "question_id": {"$nin": excluded_ids},
+                "options": {"$exists": True},
             }
-        ]
+        },
+        {"$sample": {"size": 1}},
+    ]
 
-        result = list(knowledge_base.aggregate(pipeline))
-        raw_data: QuestionResponse = result[0]
+    try:
+        for _ in range(10):   # Retry up to 10 different questions
+            result = list(knowledge_base.aggregate(pipeline))
 
-        return QuestionResponse(
-            question_id = raw_data.get("question_id"),
-            question = raw_data.get("question"),
-            answer = raw_data.get("answer"),
-            subtopic = raw_data.get("subtopic"),
-            difficulty = raw_data.get("difficulty"),
-            bloom_taxonomy = raw_data.get("bloom_taxonomy"),
-            image=raw_data.get("images"),
-            area=raw_data.get("area"),
-            description=raw_data.get("description")
+            if not result:
+                break
+
+            raw_data = result[0]
+            options = raw_data.get("options", [])
+
+            # Reject if any option is a dict
+            if isinstance(options, list) and all(isinstance(opt, str) for opt in options):
+                return QuestionResponse(
+                    question_id=raw_data.get("question_id"),
+                    question=raw_data.get("question"),
+                    answer=raw_data.get("answer"),
+                    subtopic=raw_data.get("subtopic"),
+                    difficulty=raw_data.get("difficulty"),
+                    options=options,
+                    bloom_taxonomy=raw_data.get("bloom_taxonomy"),
+                    image=raw_data.get("images"),
+                    area=raw_data.get("area"),
+                    description=raw_data.get("description"),
+                )
+
+            # Prevent selecting the same invalid question again
+            excluded_ids.append(raw_data.get("question_id"))
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "title": "No Valid Question",
+                "reason": "No question with valid options was found."
+            },
         )
-    except IndexError:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Error",
-                                                                                       "reason": "Query not found"})
+
+    except HTTPException:
+        raise
     except Exception as e:
         print(e)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error",
-                                                                                       "reason": "Cannot fetch question, database is down..."})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "title": "MongoDB Connection Error",
+                "reason": "Cannot fetch question, database is down..."
+            },
+        )
+
+def get_downgrade_from_db(question_id: str) -> dict[str, Any]:
+    try:
+        raw_data = downgrades.find_one({"original_question_id": question_id})
+        
+        if not raw_data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"title": "Not Found", "reason": "That question ID no longer exists in downgrades."})
+
+        return QuestionResponse(
+            question_id = raw_data.get("original_question_id"),
+            question = raw_data.get("downgraded_question"),
+            answer = raw_data.get("downgraded_answer"),
+            options = raw_data.get("options"),
+            subtopic = raw_data.get("subtopic"),
+            area = raw_data.get("area"),
+            difficulty = raw_data.get("difficulty"),
+            bloom_taxonomy = raw_data.get("bloom_taxonomy"),
+            image = raw_data.get("image"),
+            description=raw_data.get("description")
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"title": "MongoDB Connection Error", "reason": "Cannot fetch specific downgraded question."})
+
+
 
 
 def get_specific_question(question_id: str) -> QuestionResponse:
@@ -317,5 +392,40 @@ def get_all_knowledge_base() -> dict[str, Any]:
             detail={
                 "title": "MongoDB Connection Error",
                 "reason": "Cannot fetch knowledge base from database..."
+            }
+        )
+
+def get_all_execution_times() -> dict[str, Any]:
+    try:
+        # 1. Fetch execution times from the main standard quizzes
+        # We use projection {"_id": 0, "execution_time": 1} to ONLY return the float value for speed
+        logs_cursor = logs.find(
+            {"execution_time": {"$exists": True, "$ne": None}}, 
+            {"_id": 0, "execution_time": 1}
+        )
+        
+        # 2. Fetch execution times from the downgraded review sessions
+        reviews_cursor = reviews.find(
+            {"execution_time": {"$exists": True, "$ne": None}}, 
+            {"_id": 0, "execution_time": 1}
+        )
+        
+        # Combine both lists of execution times into a single flat array of floats
+        execution_times = []
+        for doc in logs_cursor:
+            execution_times.append(doc["execution_time"])
+            
+        for doc in reviews_cursor:
+            execution_times.append(doc["execution_time"])
+            
+        return {"status": "success", "data": execution_times}
+        
+    except Exception as e:
+        print(f"Error fetching execution times: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail={
+                "title": "MongoDB Connection Error",
+                "reason": "Cannot fetch execution times from database..."
             }
         )

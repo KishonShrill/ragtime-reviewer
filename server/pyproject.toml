@@ -18,6 +18,7 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "pytz>=2025.2",
     "uvicorn>=0.41.0",
+    "pandas>=3.0.3",
 ]
 
 [tool.basedpyright]

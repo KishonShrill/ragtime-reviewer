@@ -1,7 +1,9 @@
 export interface Question {
     original_question_id: string | null;
-    question: string;
-    description: string;
+    original_question: string;
+    downgraded_question: string | null;
+    downgraded_answer: string;
+    description: string | null;
     options: string[];
     answer: string;
     bloom_taxonomy: string;
