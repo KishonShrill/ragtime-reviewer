@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Brain, LogIn, UserPlus, Sparkles, Shield, Server, Settings2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -14,17 +14,29 @@ export default function LandingPage() {
 
     const navigate = useNavigate();
     const { toast } = useToast();
+    const [searchParams] = useSearchParams(); // Hook to read URL parameters
 
     const token = localStorage.getItem("reviewer_token");
     const backendUrl = useConfigStore((state) => state.backendUrl);
-    const setBackendUrl = useConfigStore((state) => state.setBackendUrl)
+    const setBackendUrl = useConfigStore((state) => state.setBackendUrl);
 
+    // Auto-configure backend URL if "?database=" is present in the link
+    useEffect(() => {
+        const dbParam = searchParams.get("database");
+        if (dbParam) {
+            setBackendUrl(dbParam);
+            // Optional: Automatically open settings so the user sees it applied
+            setShowSettings(true);
+        }
+    }, [searchParams, setBackendUrl]);
+
+    // Redirect if already logged in
     useEffect(() => {
         if (token) {
             // Use replace: true so the user can't use the browser's back button to return to the login screen
             navigate("/select", { replace: true });
         }
-    }, [navigate]);
+    }, [navigate, token]);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -54,12 +66,11 @@ export default function LandingPage() {
 
             // 1. Catch backend errors (e.g., wrong password, user exists)
             if (!response.ok) {
-                // Adjust data.detail depending on how your FastAPI backend formats errors
-                setIsLogin(false)
+                setIsLogin(false);
                 throw new Error(data?.detail?.reason || data?.detail || "Authentication failed");
             }
 
-            // 2. THE FIX: Save everything to localStorage so other pages know you are logged in
+            // 2. Save everything to localStorage so other pages know you are logged in
             localStorage.setItem('reviewer_token', data.access_token);
             localStorage.setItem('reviewer_role', data.role ?? '');
             localStorage.setItem('reviewer_email', data.email ?? '');
@@ -181,7 +192,7 @@ export default function LandingPage() {
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    className="w-full text-xs h-8"
+                                    className="w-full text-xs h-8 bg-white"
                                     onClick={() => setBackendUrl("http://localhost:8000")}
                                 >
                                     Local
@@ -190,7 +201,7 @@ export default function LandingPage() {
                                     type="button"
                                     variant="outline"
                                     size="sm"
-                                    className="w-full text-xs h-8"
+                                    className="w-full text-xs h-8 bg-white"
                                     onClick={() => setBackendUrl("https://api.yourdomain.com")}
                                 >
                                     Online
