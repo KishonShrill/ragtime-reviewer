@@ -75,6 +75,8 @@ export default function QuizPage() {
     // Config & Auth
     const backendUrl = useConfigStore((state) => state.backendUrl);
     const token = localStorage.getItem('reviewer_token');
+    const user = localStorage.getItem('reviewer_user') || 'default';
+    const CACHE_KEY = `reviewer_active_quiz_${user}`; // Scoped cache key
 
     // Knowledge Score State
     const [knowledgeScores, setKnowledgeScores] = useState<Record<string, any>>(getStoredScores());
@@ -119,10 +121,41 @@ export default function QuizPage() {
         }
     }, [token, navigate, location, toast]);
 
+    // Anti-Cheat: Load from Cache or Fetch New
     useEffect(() => {
-        if (token) loadNewQuestion();
+        if (!token) return;
+
+        const cachedSession = localStorage.getItem(CACHE_KEY);
+
+        if (cachedSession && !isTrial) {
+            try {
+                const parsed = JSON.parse(cachedSession);
+                setQuestion(parsed.question);
+                setCurrentIndex(parsed.currentIndex);
+                setScore(parsed.score);
+                setIsReviewMode(parsed.isReviewMode);
+                setIsLoading(false);
+                return; // Exit early to prevent fetching a new question
+            } catch (e) {
+                console.error("Failed to parse cached session, loading new question.");
+            }
+        }
+
+        loadNewQuestion();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [token]);
+    }, [token, isTrial]);
+
+    // Anti-Cheat: Auto-Save Active State
+    useEffect(() => {
+        if (question && !showResult && !finished && !isTrial) {
+            localStorage.setItem(CACHE_KEY, JSON.stringify({
+                question,
+                currentIndex,
+                score,
+                isReviewMode
+            }));
+        }
+    }, [question, currentIndex, score, isReviewMode, showResult, finished, isTrial, CACHE_KEY]);
 
     useEffect(() => {
         let timer: number;
@@ -131,7 +164,6 @@ export default function QuizPage() {
         }
         return () => clearTimeout(timer);
     }, [isLoading, question]);
-
     // --- FETCH LOGIC ---
 
     const fetchQuestion = async (overrideScores?: Record<string, any>) => {
@@ -242,6 +274,9 @@ export default function QuizPage() {
     const handleAnswer = async (index: number) => {
         if (showResult || !question) return;
 
+        // Unlock the cache as soon as they commit an answer
+        localStorage.removeItem(CACHE_KEY);
+
         setSelected(index);
         setShowResult(true);
 
@@ -261,7 +296,6 @@ export default function QuizPage() {
                 }
             };
 
-            // Update local state and storage
             setKnowledgeScores(latestScores);
             localStorage.setItem('reviewer_knowledge_scores', JSON.stringify(latestScores));
 
@@ -389,6 +423,7 @@ export default function QuizPage() {
                             </Button>
                             {!isTrial &&
                                 <Button onClick={() => {
+                                    localStorage.removeItem(CACHE_KEY); // Ensure clear on retry
                                     setCurrentIndex(0);
                                     setScore(0);
                                     setSelected(null);

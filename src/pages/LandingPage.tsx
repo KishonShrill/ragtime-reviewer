@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Brain, LogIn, UserPlus, Sparkles, Shield, Server, Settings2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -15,8 +15,16 @@ export default function LandingPage() {
     const navigate = useNavigate();
     const { toast } = useToast();
 
+    const token = localStorage.getItem("reviewer_token");
     const backendUrl = useConfigStore((state) => state.backendUrl);
     const setBackendUrl = useConfigStore((state) => state.setBackendUrl)
+
+    useEffect(() => {
+        if (token) {
+            // Use replace: true so the user can't use the browser's back button to return to the login screen
+            navigate("/select", { replace: true });
+        }
+    }, [navigate]);
 
     // Form State
     const [formData, setFormData] = useState({
@@ -47,6 +55,7 @@ export default function LandingPage() {
             // 1. Catch backend errors (e.g., wrong password, user exists)
             if (!response.ok) {
                 // Adjust data.detail depending on how your FastAPI backend formats errors
+                setIsLogin(false)
                 throw new Error(data?.detail?.reason || data?.detail || "Authentication failed");
             }
 
@@ -79,14 +88,16 @@ export default function LandingPage() {
         }
     };
 
+    if (token) return null;
+
     return (
         <div className="flex min-h-screen bg-background">
             {/* Left Panel - Branding & Visuals (Hidden on mobile) */}
             <div className="hidden w-1/2 flex-col justify-between bg-zinc-900 p-12 text-white lg:flex relative overflow-hidden">
                 {/* Decorative background elements */}
                 <div className="absolute top-0 left-0 w-full h-full opacity-20 pointer-events-none">
-                    <div className="absolute -top-[25%] -left-[10%] w-96 h-96 rounded-full bg-primary blur-[128px]" />
-                    <div className="absolute top-[60%] -right-[10%] w-96 h-96 rounded-full bg-purple-500 blur-[128px]" />
+                    <div className="absolute top-[25%] left-[10%] w-96 h-96 rounded-full bg-primary blur-[128px]" />
+                    <div className="absolute top-[60%] right-[10%] w-96 h-96 rounded-full bg-purple-500 blur-[128px]" />
                 </div>
 
                 <div className="relative z-10 flex items-center gap-2 font-bold text-2xl">

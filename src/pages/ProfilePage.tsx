@@ -218,6 +218,7 @@ export default function ProfilePage() {
             .map(([name]) => name);
     }
 
+
     const handleExportPDF = async () => {
         if (!printRef.current) return;
 
@@ -280,6 +281,14 @@ export default function ProfilePage() {
     const startIndex = (currentPage - 1) * BATCH_SIZE;
     const currentBatchData = progressData.slice(startIndex, startIndex + BATCH_SIZE);
     const allWeakAreas = getAllWeakAreas(progressData);
+    const weakAreasWithCount = Object.entries(
+        allWeakAreas.reduce((acc, area) => {
+            acc[area] = (acc[area] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>)
+    )
+        .map(([area, count]) => ({ area, count }))
+        .sort((a, b) => b.count - a.count);
 
     return (
         <div className="min-h-screen bg-zinc-50/50 p-4 md:p-8">
@@ -463,13 +472,25 @@ export default function ProfilePage() {
                                     </CardHeader>
                                     <CardContent>
                                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                                            {allWeakAreas.map(area => (
+                                            {weakAreasWithCount.map(({ area, count }) => (
                                                 <Badge
                                                     key={area}
                                                     variant="secondary"
-                                                    className="justify-center text-center px-3 py-2 bg-white border border-destructive/20 text-destructive hover:bg-destructive/10 whitespace-normal shadow-sm"
+                                                    onClick={() =>
+                                                        window.open(
+                                                            `https://www.google.com/search?q=${encodeURIComponent(area)}`,
+                                                            "_blank"
+                                                        )
+                                                    }
+                                                    className="relative cursor-pointer justify-center text-center px-3 py-2 bg-white border border-destructive/20 text-destructive hover:bg-destructive/10 whitespace-normal shadow-sm"
                                                 >
                                                     {area}
+
+                                                    {count > 1 && (
+                                                        <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-white text-xs">
+                                                            {count}
+                                                        </span>
+                                                    )}
                                                 </Badge>
                                             ))}
                                         </div>

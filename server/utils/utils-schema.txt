@@ -1,0 +1,95 @@
+from datetime import datetime
+from typing import TypedDict, Optional, Any
+from pydantic import BaseModel
+
+
+# Website Requests
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class SignupRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+    secret: str
+
+# Data Models
+class LogicEngineResponse(BaseModel):
+    subtopic: str
+    difficulty: str
+    bloom_taxonomy: str
+
+class QuestionResponse(TypedDict):
+    question_id: str
+    question: str
+    answer: str
+    area: str
+    bloom_taxonomy: str
+    difficulty: str
+    subtopic: str
+    image: Optional[str]
+    description: Optional[str]
+
+class QuestionLog(BaseModel):
+    original: str
+    augmented: str
+
+class Logs(BaseModel):
+    original_question_id: str
+    original_question: str
+    question: str
+    answer: str
+    description: Optional[str] = None
+    area: Optional[str] = None
+    image: Optional[str] = None
+    options: list[str]
+    bloom_taxonomy: str
+    difficulty: str
+    subtopic: str
+    execution_time: float
+
+class LogPayload(BaseModel):
+    data: Logs
+    latestScores: Optional[dict[str, Any]] = None
+    isCorrect: bool
+    timestamp: datetime
+
+# Profile Queries
+class SubtopicKnowledgeScore(BaseModel):
+    mastery_score: float # 0.0 to 1.0
+    rank: str # difficulty
+    weak_concepts: list[str]
+
+class Subtopics(BaseModel):
+    subtopic: dict[str, SubtopicKnowledgeScore]
+
+class QuestionRequest(BaseModel):
+    scores: Optional[dict[str, SubtopicKnowledgeScore]] = None
+    subject: Optional[str] = None
+    is_trial: Optional[bool] = False
+    difficulty: Optional[str] = None
+    question_id: Optional[str] = None
+
+class LearnerProfile(BaseModel):
+    username: str
+    knowledge_scores: Subtopics
+
+class User(BaseModel):
+    username: str
+    email: str
+    role: str
+    knowledge_scores: Subtopics
+    access_token: Optional[str] = None
+
+class ReviewRequest(BaseModel):
+    question_id: Optional[str] = None
+    question: str
+    answer: str
+    subtopic: str
+    difficulty: str
+    current_bloom: str
+    target_bloom: str
+    image: Optional[str] = None
+    description: Optional[str] = None
+
