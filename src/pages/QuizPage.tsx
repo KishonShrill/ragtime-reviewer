@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, XCircle, ArrowLeft, Trophy, RotateCcw } from "lucide-react";
+import { CheckCircle2, XCircle, ArrowLeft, Trophy, RotateCcw, AlertCircle } from "lucide-react";
 import { ResultAsync, errAsync, okAsync } from "neverthrow";
 import QuizImageViewer from "@/components/QuizImageViewer";
 import type { Question } from "@/types/question";
@@ -55,10 +55,12 @@ const QuizPage = () => {
 
     const [score, setScore] = useState(0);
     const [finished, setFinished] = useState(false);
-    const TOTAL_QUESTIONS = isTrial ? 1 : 5;
+    const TOTAL_QUESTIONS = isTrial ? 1 : 50;
     const [question, setQuestion] = useState<Question>({
         original_question_id: null,
-        question: "",
+        original_question: "",
+        downgraded_answer: "",
+        downgraded_question: "",
         description: "",
         options: [],
         answer: "",
@@ -70,9 +72,10 @@ const QuizPage = () => {
         mockMessage: null
     });
 
-    // NEW: Review Session States
-    const [incorrectQuestions, setIncorrectQuestions] = useState<Question[]>([]);
+    // Inline Remediation States
     const [isReviewMode, setIsReviewMode] = useState(false);
+    const [showNoDowngradeModal, setShowNoDowngradeModal] = useState(false);
+    const [pendingScores, setPendingScores] = useState<typeof knowledgeScores | null>(null);
 
     useEffect(() => {
         if (!token) {
@@ -151,32 +154,16 @@ const QuizPage = () => {
                         reason: data?.detail?.reason || "An unknown error occurred"
                     });
                 }
-                //console.log(data)
-                const aiQuestion = data.result.response;
-                aiQuestion.original_question_id = data.queries?.question_id;
-                aiQuestion.original_question = data.queries?.question;
-                aiQuestion.execution_time = data.execution_time_seconds;
+
+                const rawQuestion = data.query;
+                rawQuestion.original_question_id = rawQuestion.question_id;
+                rawQuestion.original_question = rawQuestion.question;
+                rawQuestion.execution_time = data.execution_time_seconds;
 
                 const questionIndex = data.log_count % TOTAL_QUESTIONS;
                 if (questionIndex != 0) setCurrentIndex(questionIndex);
 
-                if (typeof aiQuestion === 'string') {
-                    return errAsync({
-                        title: "Backend Generation Error",
-                        reason: data.result.error
-                    });
-                }
-
-                aiQuestion.image = data.queries?.image || null;
-                aiQuestion.description = data.queries?.description || null;
-                aiQuestion.area = data.queries?.area || null;
-
-                if (data.result.error) {
-                    aiQuestion.isMock = true;
-                    aiQuestion.mockMessage = data.result.error;
-                }
-                //console.log(aiQuestion)
-                return okAsync(aiQuestion);
+                return okAsync(rawQuestion);
             });
         }).mapErr((err) => err).map((val) => val);
     }
@@ -189,6 +176,7 @@ const QuizPage = () => {
         const result = await fetchQuestion(overrideScores);
         result.match(
             (data) => {
+                console.log(data)
                 setQuestion(data);
                 setIsLoading(false);
                 if (data.isMock) {
@@ -207,83 +195,69 @@ const QuizPage = () => {
         );
     };
 
-    // NEW: Review Session Fetch Logic
-    const startReview = async (q: Question) => {
-        // 1. Calculate downgraded taxonomy
-        const downgradedBloom = q.bloom_taxonomy === "Applying" ? "Understanding" : "Remembering";
+    // Helper to advance the main quiz flow
+    const proceedToNextMainQuestion = (scoresToUse: typeof knowledgeScores) => {
+        if (currentIndex + 1 < TOTAL_QUESTIONS) {
+            setCurrentIndex((i) => i + 1);
+            setShowFallback(false);
+            setSelected(null);
+            setShowResult(false);
+            setIsReviewMode(false);
+            loadNewQuestion(scoresToUse);
+        } else {
+            setFinished(true);
+        }
+    };
 
-        // 2. Remove it from the list so they can't review it twice
-        setIncorrectQuestions(prev => prev.filter(item => item !== q));
+    // NEW: Immediate Inline Downgrade Fetch
+    const fetchDowngradedQuestion = async (originalId: string | null, scoresToUse: typeof knowledgeScores) => {
+        if (!originalId) {
+            setShowNoDowngradeModal(true);
+            return;
+        }
 
-        // 3. Setup UI states
-        setIsReviewMode(true);
-        setFinished(false);
         setIsLoading(true);
-        setFetchError(null);
         setSelected(null);
         setShowResult(false);
         setShowFallback(false);
 
-        // 4. Request the specific downgraded question using the trial endpoint
-        const requestPayload = {
-            question_id: q.original_question_id || null,
-            question: q.question, // Send the text they got wrong
-            answer: q.answer,     // Send the answer they missed
-            subtopic: q.subtopic,
-            difficulty: q.difficulty,
-            current_bloom: q.bloom_taxonomy,
-            target_bloom: downgradedBloom,
-            image: q.image,
-            description: q.description,
-            is_review: true // Helpful flag for backend tracing
-        };
-
-        const result = await ResultAsync.fromPromise(
-            fetch(`${backendUrl}/api/ai/review`, {
-                method: 'POST',
+        try {
+            const response = await fetch(`${backendUrl}/api/ai/downgraded?original_question_id=${originalId}`, {
+                method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestPayload),
-            }),
-            (error) => ({ title: "Unreachable Server", reason: `Network Error: ${String(error)}` })
-        ).andThen(response => {
-            if (response.status === 404) return errAsync({ title: "Unreachable Server", reason: "The backend link is wrong." });
-            return ResultAsync.fromPromise(response.json(), () => ({ title: "Parsing Error", reason: "Failed to parse response..." }))
-                .andThen(data => {
-                    if (!response.ok) return errAsync({ title: data?.detail?.title || "Error", reason: data?.detail?.reason || "An unknown error occurred" });
-
-                    const aiQuestion = data.result.response;
-                    aiQuestion.original_question_id = data.queries?.question_id;
-                    aiQuestion.original_question = data.queries?.question;
-                    aiQuestion.area = data.queries?.area;
-                    aiQuestion.execution_time = data.execution_time_seconds;
-                    aiQuestion.image = data.queries?.image || null;
-                    aiQuestion.description = data.queries?.description || null;
-
-                    if (data.result.error) {
-                        aiQuestion.isMock = true;
-                        aiQuestion.mockMessage = data.result.error;
-                    }
-                    return okAsync(aiQuestion);
-                });
-        });
-
-        result.match(
-            (data) => {
-                setQuestion(data);
-                setIsLoading(false);
-                if (data.isMock) {
-                    toast({ variant: "destructive", title: "Offline Mode", description: data.mockMessage });
                 }
-            },
-            (err) => {
-                toast({ variant: "destructive", title: err.title, description: err.reason });
-                setFetchError(err);
-                setIsLoading(false);
+            });
+
+            if (!response.ok) {
+                throw new Error("No downgrade found");
             }
-        );
+
+            const data = await response.json();
+
+            console.log(data)
+            // Map the response correctly based on your backend shape
+            // Assuming it returns the question object directly or inside data.result.response
+            const aiQuestion = data.result.response
+
+            if (!aiQuestion || !aiQuestion.downgraded_question) {
+                throw new Error("Invalid downgrade data");
+            }
+
+            aiQuestion.downgraded_question = data.result.response.question
+            aiQuestion.downgraded_answer = data.result.response.answer
+            aiQuestion.original_question_id = originalId; // Keep the tracker
+            aiQuestion.execution_time = data.execution_time_seconds || 0;
+
+            setQuestion(aiQuestion);
+            setIsReviewMode(true);
+            setIsLoading(false);
+
+        } catch (error) {
+            setIsLoading(false);
+            setPendingScores(scoresToUse);
+            setShowNoDowngradeModal(true);
+        }
     };
 
     const handleAnswer = (index: number) => {
@@ -292,21 +266,9 @@ const QuizPage = () => {
         setShowResult(true);
 
         const isCorrect = question.options[index].toLowerCase() === question.answer.toLowerCase();
-
-        // 1. Check if incorrect and NOT Remembering to add to review list (Only during Main Quiz)
-        if (!isCorrect && !isReviewMode && question.bloom_taxonomy !== "Remembering") {
-            setIncorrectQuestions(prev => {
-                // Prevent duplicate entries
-                if (!prev.some(q => q.original_question_id === question.original_question_id)) {
-                    return [...prev, question];
-                }
-                return prev;
-            });
-        }
-
         let latestScores = knowledgeScores;
 
-        // 2. SCORING LOGIC: Only update scores if it is the MAIN quiz
+        // 1. SCORING LOGIC: Only update scores if it is the MAIN quiz
         if (!isReviewMode) {
             const updatedMasteryScore = calculateNewMasteryScore(
                 knowledgeScores?.[question.subtopic]?.mastery_score,
@@ -345,10 +307,15 @@ const QuizPage = () => {
             }
         }
 
-        // 3. DATABASE LOGGING: Route to the correct backend collection
+        // 2. DATABASE LOGGING
         const currentTime = new Date().toISOString();
-        const endpoint = isReviewMode ? "/api/reviews" : "/api/logs"; // <-- Routes to new collection!
-        //console.log(question)
+        const endpoint = isReviewMode ? "/api/reviews" : "/api/logs";
+        console.log(JSON.stringify({
+            data: question,
+            isCorrect,
+            latestScores,
+            timestamp: currentTime
+        }))
         ResultAsync.fromPromise(
             fetch(`${backendUrl}${endpoint}`, {
                 method: 'POST',
@@ -360,7 +327,7 @@ const QuizPage = () => {
                     data: question,
                     isCorrect,
                     latestScores,
-                    timestamp: currentTime,
+                    timestamp: currentTime
                 }),
             }),
             (error) => ({ title: "Unreachable Server", reason: `Network Error: ${String(error)}` })
@@ -372,22 +339,14 @@ const QuizPage = () => {
             });
         });
 
-        // 4. NEXT QUESTION TIMEOUT
+        // 3. NEXT ACTION ROUTING
         setTimeout(() => {
-            if (isReviewMode) {
-                // If reviewing, return to the finish screen after answering
-                setFinished(true);
-                setIsReviewMode(false);
-                setSelected(null);
-                setShowResult(false);
-            } else if (currentIndex + 1 < TOTAL_QUESTIONS) {
-                setCurrentIndex((i) => i + 1);
-                setShowFallback(false);
-                setSelected(null);
-                setShowResult(false);
-                loadNewQuestion(latestScores);
+            if (!isCorrect && !isReviewMode && question.bloom_taxonomy !== "Remembering") {
+                // Inline Remediation: Attempt to fetch downgrade immediately
+                fetchDowngradedQuestion(question.original_question_id, latestScores);
             } else {
-                setFinished(true);
+                // If they got it right, OR if they just finished answering a downgraded review
+                proceedToNextMainQuestion(latestScores);
             }
         }, 1500);
     };
@@ -423,7 +382,7 @@ const QuizPage = () => {
         );
     }
 
-    if (isLoading || !question.question) {
+    if (isLoading) {
         const handleGoBack = () => {
             navigate(token ? "/select" : "/");
         };
@@ -432,7 +391,7 @@ const QuizPage = () => {
             <div className="flex min-h-screen items-center justify-center bg-background">
                 <div className="flex flex-col items-center gap-6 text-center">
                     <div className="animate-pulse text-xl font-medium text-muted-foreground">
-                        {isReviewMode ? "Downgrading difficulty logic..." : "Loading your next challenge..."}
+                        {isReviewMode ? "Generating a downgraded review question..." : "Loading your next challenge..."}
                     </div>
                     {showFallback && (
                         <div className="flex flex-col items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -472,36 +431,6 @@ const QuizPage = () => {
                                     : "Keep practicing, you'll improve!"}
                         </p>
 
-                        {/* NEW: Review Section */}
-                        {incorrectQuestions.length > 0 && (
-                            <div className="mt-6 border-t pt-4 text-left">
-                                <h4 className="text-sm font-bold text-foreground mb-1 flex items-center gap-2">
-                                    <RotateCcw className="h-4 w-4" /> Review Incorrect Questions
-                                </h4>
-                                <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
-                                    Retrying will test you on a downgraded Bloom's Taxonomy level to help build up your fundamentals.
-                                </p>
-                                <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                                    {incorrectQuestions.map((iq, idx) => (
-                                        <Button
-                                            key={idx}
-                                            variant="outline"
-                                            className="cursor-pointer w-full justify-start text-left h-auto py-2 px-3 flex-col items-start gap-1.5"
-                                            onClick={() => startReview(iq)}
-                                        >
-                                            <span className="text-xs font-semibold line-clamp-2 whitespace-normal">{iq.question}</span>
-                                            <div className="flex items-center gap-2 w-full">
-                                                <Badge variant="secondary" className="text-[9px] px-1.5">{iq.subtopic}</Badge>
-                                                <Badge variant="outline" className="text-[9px] px-1.5 text-destructive ml-auto">
-                                                    {iq.bloom_taxonomy} &rarr; {iq.bloom_taxonomy === 'Applying' ? 'Understanding' : 'Remembering'}
-                                                </Badge>
-                                            </div>
-                                        </Button>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
                         <p className="text-muted-foreground text-sm italic pt-4">
                             Results have been synchronized with the server at: <br />
                             <span className="text-xs font-mono opacity-70">{backendUrl}</span>
@@ -519,7 +448,6 @@ const QuizPage = () => {
                                         setShowResult(false);
                                         setFinished(false);
                                         setShowFallback(false);
-                                        setIncorrectQuestions([]); // Clear reviews on a fresh start
                                         loadNewQuestion();
                                     }}
                                 >
@@ -534,7 +462,36 @@ const QuizPage = () => {
     }
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <div className="flex min-h-screen items-center justify-center bg-background p-4 relative">
+
+            {/* NEW: No Downgrade Modal Overlay */}
+            {showNoDowngradeModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+                    <Card className="w-full max-w-sm shadow-2xl border-border animate-in zoom-in-95 duration-200">
+                        <CardHeader className="text-center pb-4">
+                            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-2">
+                                <AlertCircle className="h-6 w-6 text-muted-foreground" />
+                            </div>
+                            <CardTitle className="text-lg">No Review Available</CardTitle>
+                        </CardHeader>
+                        <CardContent className="text-center text-sm text-muted-foreground pb-6">
+                            A downgraded version of this specific question was not found in the database. We will proceed to your next question.
+                        </CardContent>
+                        <div className="p-4 pt-0 flex justify-center">
+                            <Button
+                                className="w-full"
+                                onClick={() => {
+                                    setShowNoDowngradeModal(false);
+                                    proceedToNextMainQuestion(pendingScores || knowledgeScores);
+                                }}
+                            >
+                                Continue
+                            </Button>
+                        </div>
+                    </Card>
+                </div>
+            )}
+
             <Card className="w-full max-w-2xl shadow-xl border-border/50 overflow-hidden">
                 <div className="bg-muted/30 p-2 text-center text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border/40">
                     Connected to: {backendUrl}
@@ -543,8 +500,8 @@ const QuizPage = () => {
                     <div className="flex items-center justify-between text-sm text-muted-foreground">
                         <span>
                             {isReviewMode ? (
-                                <span className="font-bold flex items-center gap-2 text-[#f97415]">
-                                    <RotateCcw className="h-4 w-4" /> Review Session
+                                <span className="font-bold flex items-center gap-2 text-[#f97415] animate-pulse">
+                                    <RotateCcw className="h-4 w-4" /> Remediation Active
                                 </span>
                             ) : (
                                 `Question ${currentIndex + 1} of ${TOTAL_QUESTIONS}`
@@ -555,22 +512,22 @@ const QuizPage = () => {
 
                     {!isReviewMode && <Progress value={progress} className="h-2" />}
 
-                    {question.description && (
+                    {question?.description && (
                         <p className="text-sm text-muted-foreground italic">{question.description}</p>
                     )}
-                    {question.image && question.image.length > 0 && (
+                    {question?.image && question.image.length > 0 && (
                         <QuizImageViewer images={question.image.split(",")} />
                     )}
-                    <CardTitle className="text-xl font-bold text-foreground">{question.question}</CardTitle>
+                    <CardTitle className="text-xl font-bold text-foreground">{isReviewMode ? question?.downgraded_question : question?.original_question}</CardTitle>
 
                     {/* Question Metadata Badges */}
                     <div id="metadata" className="flex flex-wrap items-center gap-2 pt-1">
-                        {question.subtopic && (
+                        {question?.subtopic && (
                             <Badge variant="secondary" className={`text-xs font-bold`}>
                                 {question.subtopic}
                             </Badge>
                         )}
-                        {question.difficulty && (
+                        {question?.difficulty && (
                             <Badge variant="outline"
                                 className={`text-xs font-normal ${question.difficulty === "Easy" ? "bg-green-600 text-white font-bold" :
                                     question.difficulty === "Medium" ? "bg-[#f97415] text-white font-bold" :
@@ -581,7 +538,7 @@ const QuizPage = () => {
                                 {question.difficulty}
                             </Badge>
                         )}
-                        {question.bloom_taxonomy && (
+                        {question?.bloom_taxonomy && (
                             <Badge variant="outline"
                                 className={`text-xs font-bold ${question.bloom_taxonomy === "Remembering" ? "text-green-600" :
                                     question.bloom_taxonomy === "Understanding" ? "text-[#f97415]" :
@@ -596,12 +553,12 @@ const QuizPage = () => {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-1 gap-3">
-                        {question.options.map((option, i) => {
+                        {question?.options.map((option, i) => {
                             let variant: "outline" | "default" | "destructive" | "secondary" = "outline";
                             let icon = null;
 
                             if (showResult) {
-                                const correctIndex = question.options.indexOf(question.answer);
+                                const correctIndex = isReviewMode ? question.options.indexOf(question.downgraded_answer) : question.options.indexOf(question.answer);
 
                                 if (i === correctIndex) {
                                     variant = "default";

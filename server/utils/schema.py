@@ -28,8 +28,10 @@ class QuestionResponse(TypedDict):
     bloom_taxonomy: str
     difficulty: str
     subtopic: str
-    image: Optional[str]
-    description: Optional[str]
+    options: list[str]
+    image: Optional[str] = None
+    description: Optional[str] = None
+    link: Optional[str] = None
 
 class QuestionLog(BaseModel):
     original: str
