@@ -286,8 +286,17 @@ export default function KnowledgeBasePage() {
                                                     <TableRow key={item.question_id} className="hover:bg-zinc-50/50">
                                                         {/* Icons for Image/Description */}
                                                         <TableCell className="flex flex-col gap-2 justify-center h-full pt-4">
-                                                            {item.image && <ImageIcon className="h-4 w-4 text-primary" title="Contains Image" />}
-                                                            {item.description && <AlignLeft className="h-4 w-4 text-muted-foreground" title="Contains Description" />}
+                                                            {item.image && (
+                                                                <span title="Contains Image">
+                                                                    <ImageIcon className="h-4 w-4 text-primary" />
+                                                                </span>
+                                                            )}
+
+                                                            {item.description && (
+                                                                <span title="Contains Description">
+                                                                    <AlignLeft className="h-4 w-4 text-muted-foreground" />
+                                                                </span>
+                                                            )}
                                                         </TableCell>
 
                                                         {/* Question Text */}

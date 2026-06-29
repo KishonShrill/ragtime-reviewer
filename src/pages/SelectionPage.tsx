@@ -13,7 +13,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
-    Zap, PlayCircle, LogOut, Database, Shield, BookOpen,
+    Zap, PlayCircle, LogOut, Database, Shield,
     UserCircle, FileText, QrCode, ExternalLink, FileCode,
     Download, Activity, Settings2
 } from "lucide-react";
