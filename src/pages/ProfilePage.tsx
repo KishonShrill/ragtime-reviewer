@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { toPng } from 'html-to-image';
 import jsPDF from "jspdf";
 import { useToast } from "@/hooks/use-toast";
-import { useConfigStore } from "@/stores/useConfigStore"; // <-- Using our Zustand store
+import { useConfigStore } from "@/stores/useConfigStore";
 
 // UI Components
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -78,7 +78,7 @@ export default function ProfilePage() {
     const navigate = useNavigate();
     const { toast } = useToast();
 
-    // Auth & Config variables directly from storage
+    // Auth & Config variables
     const backendUrl = useConfigStore((state) => state.backendUrl);
     const user = localStorage.getItem('reviewer_user');
     const email = localStorage.getItem('reviewer_email');
@@ -116,7 +116,6 @@ export default function ProfilePage() {
         if (!user || !token) return;
         const cacheKey = `reviewer_quizLogs_${user}`;
 
-        // 1. Check LocalStorage Cache
         if (!forceRefresh) {
             const cachedData = localStorage.getItem(cacheKey);
             if (cachedData) {
@@ -135,7 +134,6 @@ export default function ProfilePage() {
             }
         }
 
-        // 2. Fetch from API
         setIsRefreshing(true);
         try {
             const response = await fetch(`${backendUrl}/api/history`, {
@@ -202,8 +200,9 @@ export default function ProfilePage() {
             .map(([name]) => name);
     }
 
-    function getAllWeakAreas(allLogs: any[]) {
-        const incorrectLogs = allLogs.filter((log) => !log.isCorrect);
+    // THE FIX: Directly extract and count areas for a specific batch array
+    function getBatchWeakAreas(batchLogs: any[]) {
+        const incorrectLogs = batchLogs.filter((log) => !log.isCorrect);
         const areaFreq: Record<string, number> = {};
 
         incorrectLogs.forEach((log) => {
@@ -214,10 +213,9 @@ export default function ProfilePage() {
         });
 
         return Object.entries(areaFreq)
-            .sort((a, b) => b[1] - a[1])
-            .map(([name]) => name);
+            .map(([area, count]) => ({ area, count }))
+            .sort((a, b) => b.count - a.count);
     }
-
 
     const handleExportPDF = async () => {
         if (!printRef.current) return;
@@ -279,16 +277,12 @@ export default function ProfilePage() {
 
     const totalPages = Math.max(1, Math.ceil(progressData.length / BATCH_SIZE));
     const startIndex = (currentPage - 1) * BATCH_SIZE;
+
+    // Pagination data
     const currentBatchData = progressData.slice(startIndex, startIndex + BATCH_SIZE);
-    const allWeakAreas = getAllWeakAreas(progressData);
-    const weakAreasWithCount = Object.entries(
-        allWeakAreas.reduce((acc, area) => {
-            acc[area] = (acc[area] || 0) + 1;
-            return acc;
-        }, {} as Record<string, number>)
-    )
-        .map(([area, count]) => ({ area, count }))
-        .sort((a, b) => b.count - a.count);
+
+    // Calculate weaknesses ONLY for the current batch
+    const weakAreasWithCount = getBatchWeakAreas(currentBatchData);
 
     return (
         <div className="min-h-screen bg-zinc-50/50 p-4 md:p-8">
@@ -463,11 +457,11 @@ export default function ProfilePage() {
                         </TabsList>
 
                         <TabsContent value="main">
-                            {allWeakAreas.length > 0 && (
+                            {weakAreasWithCount.length > 0 && (
                                 <Card className="border-destructive/20 bg-destructive/5 shadow-sm mb-5">
                                     <CardHeader className="pb-3">
                                         <CardTitle className="text-lg text-destructive flex items-center gap-2">
-                                            <Target className="h-5 w-5" /> Overall Weak Concept Areas
+                                            <Target className="h-5 w-5" /> Weak Concept Areas (Batch {currentPage})
                                         </CardTitle>
                                     </CardHeader>
                                     <CardContent>
@@ -485,7 +479,6 @@ export default function ProfilePage() {
                                                     className="relative cursor-pointer justify-center text-center px-3 py-2 bg-white border border-destructive/20 text-destructive hover:bg-destructive/10 whitespace-normal shadow-sm"
                                                 >
                                                     {area}
-
                                                     {count > 1 && (
                                                         <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-white text-xs">
                                                             {count}
