@@ -1,9 +1,17 @@
 import { useEffect, useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { toPng } from 'html-to-image';
+import jsPDF from "jspdf";
+import { useToast } from "@/hooks/use-toast";
+import { useConfigStore } from "@/stores/useConfigStore"; // <-- Using our Zustand store
+
+// UI Components
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
 import {
     ChartContainer,
     ChartTooltip,
@@ -12,17 +20,17 @@ import {
     ChartLegendContent,
     type ChartConfig,
 } from "@/components/ui/chart";
-import { LineChart, Line, XAxis, YAxis, ReferenceLine } from "recharts";
-import { User, BookOpen, FlaskConical, Atom, Globe, ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, Download, CheckCircle2, XCircle, Target } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
-import { useToast } from "@/hooks/use-toast";
-import { ResultAsync, errAsync, okAsync } from "neverthrow";
-import { toPng } from 'html-to-image'
-import jsPDF from "jspdf";
 
-// Chart configuration and icons remain unchanged
+// Icons & Charts
+import { LineChart, Line, XAxis, YAxis, ReferenceLine } from "recharts";
+import {
+    User, BookOpen, FlaskConical, Atom, Globe, ArrowLeft,
+    ChevronLeft, ChevronRight, RefreshCw, Download,
+    CheckCircle2, XCircle, Target
+} from "lucide-react";
+
+// --- CONFIGURATION & HELPERS ---
+
 const chartConfig: ChartConfig = {
     Biology: { label: "Biology", color: "hsl(142 71% 45%)" },
     Chemistry: { label: "Chemistry", color: "hsl(25 95% 53%)" },
@@ -38,94 +46,112 @@ const subjectIcons: Record<string, React.ReactNode> = {
     "General Science": <Globe className="h-5 w-5" />,
 };
 
-function getMasteryLabel(score: number): { text: string; textClass: string; bgClass: string } {
+function getMasteryLabel(score: number) {
     if (score < 0.2) return { text: "Very Poor", textClass: "text-red-500", bgClass: "bg-red-500" };
-    if (score < 0.4) return { text: "Poor", textClass: "text-[#f97415]", bgClass: "bg-[#f97415]" };
+    if (score < 0.4) return { text: "Poor", textClass: "text-orange-500", bgClass: "bg-orange-500" };
     if (score < 0.6) return { text: "Good", textClass: "text-primary", bgClass: "bg-primary" };
-    if (score < 0.8) return { text: "Great", textClass: "text-[#88E788]", bgClass: "bg-[#88E788]" };
-    return { text: "Excellent", textClass: "text-[#1a9948]", bgClass: "bg-[#1a9948]" };
+    if (score < 0.8) return { text: "Great", textClass: "text-emerald-400", bgClass: "bg-emerald-400" };
+    return { text: "Excellent", textClass: "text-emerald-600", bgClass: "bg-emerald-600" };
 }
 
-const ProfilePage = () => {
+function getDifficultyStyle(difficulty: string) {
+    switch (difficulty) {
+        case "Easy": return "bg-green-600 hover:bg-green-600 text-white font-bold";
+        case "Medium": return "bg-orange-500 hover:bg-orange-500 text-white font-bold";
+        case "Hard": return "bg-red-500 hover:bg-red-500 text-white font-bold";
+        default: return "text-muted-foreground";
+    }
+}
+
+function getTaxonomyStyle(taxonomy: string) {
+    switch (taxonomy) {
+        case "Remembering": return "text-green-600";
+        case "Understanding": return "text-orange-500";
+        case "Applying": return "text-destructive";
+        default: return "text-muted-foreground";
+    }
+}
+
+// --- MAIN COMPONENT ---
+
+export default function ProfilePage() {
     const navigate = useNavigate();
-    const { user, email, knowledgeScores, token, backendUrl } = useAuth();
     const { toast } = useToast();
 
-    // Pagination & Chart State
+    // Auth & Config variables directly from storage
+    const backendUrl = useConfigStore((state) => state.backendUrl);
+    const user = localStorage.getItem('reviewer_user');
+    const email = localStorage.getItem('reviewer_email');
+    const token = localStorage.getItem('reviewer_token');
+
+    // Parse knowledge scores safely
+    const knowledgeScores = (() => {
+        try {
+            return JSON.parse(localStorage.getItem('reviewer_knowledge_scores') || '{}');
+        } catch {
+            return {};
+        }
+    })();
+
+    // State
     const BATCH_SIZE = 50;
     const [progressData, setProgressData] = useState<any[]>([]);
     const [reviewData, setReviewData] = useState<any[]>([]);
     const [currentPage, setCurrentPage] = useState(1);
     const [isExporting, setIsExporting] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const printRef = useRef<HTMLDivElement>(null);
 
-    // NEW: Loading state for the refresh button
-    const [isRefreshing, setIsRefreshing] = useState(false);
+    // Initial Auth Check
+    useEffect(() => {
+        if (!token) {
+            toast({ title: "Authentication Required", description: `Please sign in first!` });
+            navigate("/");
+            return;
+        }
+        fetchLogs(false);
+    }, [token, navigate, toast, user, backendUrl]);
 
-    // NEW: Reusable Fetch Function
-    const fetchLogs = (forceRefresh = false) => {
-        if (!user) return;
+    const fetchLogs = async (forceRefresh = false) => {
+        if (!user || !token) return;
         const cacheKey = `reviewer_quizLogs_${user}`;
 
-        // 1. If not forcing a refresh, check LocalStorage first
+        // 1. Check LocalStorage Cache
         if (!forceRefresh) {
             const cachedData = localStorage.getItem(cacheKey);
             if (cachedData) {
                 try {
-                    const parsedData = JSON.parse(cachedData) || [];
+                    const parsedData = JSON.parse(cachedData) || {};
                     const cachedLogs = parsedData.logs || [];
                     const cachedReviews = parsedData.reviews || [];
 
                     setProgressData(cachedLogs);
                     setReviewData(cachedReviews);
-
                     setCurrentPage(Math.max(1, Math.ceil(cachedLogs.length / BATCH_SIZE)));
-                    return; // Exit early! No need to hit the database.
+                    return;
                 } catch (e) {
                     console.error("Failed to parse cached logs", e);
                 }
             }
         }
 
-        // 2. If forcing refresh or no cache exists, hit the API
+        // 2. Fetch from API
         setIsRefreshing(true);
-        ResultAsync.fromPromise(
-            fetch(`${backendUrl}/api/history`, {
+        try {
+            const response = await fetch(`${backendUrl}/api/history`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-            }),
-            (error) => ({ title: "Unreachable Server", reason: `Network Error: ${String(error)}` })
-        ).andThen((response) => {
-            if (response.status === 404)
-                return errAsync({ title: "Unreachable Server", reason: "The backend link is wrong." });
-
-            return ResultAsync.fromPromise(
-                response.json(),
-                () => ({ title: "Parsing Error", reason: "Failed to parse response..." })
-            ).andThen((data) => {
-                if (!response.ok) {
-                    return errAsync({
-                        title: data?.detail?.title || "Error",
-                        reason: data?.detail?.reason || "An unknown error occurred"
-                    });
-                }
-                return okAsync(data);
             });
-        }).mapErr((err) => {
-            setIsRefreshing(false);
-            toast({
-                variant: "destructive",
-                title: err.title,
-                description: err.reason
-            });
-        }).map((dataObj: any) => {
-            setIsRefreshing(false);
-            if (!dataObj) return;
 
-            // Destructure the two lists from the backend
+            if (!response.ok) {
+                const errData = await response.json().catch(() => null);
+                throw new Error(errData?.detail?.reason || "Failed to fetch logs");
+            }
+
+            const dataObj = await response.json();
             const rawLogs = dataObj.logs || [];
             const rawReviews = dataObj.reviews || [];
 
@@ -142,7 +168,7 @@ const ProfilePage = () => {
             });
 
             setProgressData(formattedChartData);
-            setReviewData(rawReviews); // Save the reviews to state
+            setReviewData(rawReviews);
             setCurrentPage(Math.max(1, Math.ceil(formattedChartData.length / BATCH_SIZE)));
 
             localStorage.setItem(cacheKey, JSON.stringify({ logs: formattedChartData, reviews: rawReviews }));
@@ -150,14 +176,19 @@ const ProfilePage = () => {
             if (forceRefresh) {
                 toast({ title: "Synced!", description: "Your chart is up to date." });
             }
-        });
+        } catch (error: any) {
+            toast({
+                variant: "destructive",
+                title: "Sync Failed",
+                description: error.message || "Could not connect to server."
+            });
+        } finally {
+            setIsRefreshing(false);
+        }
     };
 
     function getWeakTaxonomies(subject: string, allLogs: any[]) {
-        const incorrectLogs = allLogs.filter(
-            (log) => !log.isCorrect && log.augmented?.subtopic === subject
-        );
-
+        const incorrectLogs = allLogs.filter(log => !log.isCorrect && log.augmented?.subtopic === subject);
         const taxonomyFreq: Record<string, number> = {};
 
         incorrectLogs.forEach((log) => {
@@ -182,7 +213,6 @@ const ProfilePage = () => {
             }
         });
 
-        // Return them all, sorted from most frequently incorrect to least
         return Object.entries(areaFreq)
             .sort((a, b) => b[1] - a[1])
             .map(([name]) => name);
@@ -195,7 +225,6 @@ const ProfilePage = () => {
         toast({ title: "Generating PDF", description: "Please wait while we prepare your multi-page report..." });
 
         try {
-            // 1. Take a high-res screenshot
             const dataUrl = await toPng(printRef.current, {
                 quality: 1,
                 pixelRatio: 2,
@@ -203,54 +232,39 @@ const ProfilePage = () => {
                 fontEmbedCSS: '',
             });
 
-            // 2. Setup PDF dimensions
             const pdf = new jsPDF("p", "mm", "a4");
             const pdfWidth = pdf.internal.pageSize.getWidth();
             const pdfHeight = pdf.internal.pageSize.getHeight();
-
-            // --- NEW: MARGIN MATH ---
-            const margin = 25.4; // Exactly 1 inch in millimeters
+            const margin = 25.4;
             const usableWidth = pdfWidth - (margin * 2);
             const usableHeight = pdfHeight - (margin * 2);
 
-            // 3. Calculate total image height based on the USABLE width
             const domElementHeight = printRef.current.offsetHeight;
             const domElementWidth = printRef.current.offsetWidth;
             const imgHeight = (domElementHeight * usableWidth) / domElementWidth;
 
-            // 4. Multi-Page Slicing Logic with Margins
             let heightLeft = imgHeight;
             let position = 0;
 
-            // Stamp the first page
             pdf.addImage(dataUrl, "PNG", margin, margin + position, usableWidth, imgHeight);
-
-            // "White-out" the bottom margin in case the image bleeds into it
             pdf.setFillColor(255, 255, 255);
             pdf.rect(0, pdfHeight - margin, pdfWidth, margin, "F");
 
             heightLeft -= usableHeight;
 
-            // Keep adding pages as long as there is content left to show
             while (heightLeft > 0) {
-                position -= usableHeight; // Shift the image UP by exactly one usable page length
+                position -= usableHeight;
                 pdf.addPage();
-
-                // Stamp the image again (shifted up)
                 pdf.addImage(dataUrl, "PNG", margin, margin + position, usableWidth, imgHeight);
 
-                // "White-out" the top margin
                 pdf.setFillColor(255, 255, 255);
                 pdf.rect(0, 0, pdfWidth, margin, "F");
-
-                // "White-out" the bottom margin
                 pdf.rect(0, pdfHeight - margin, pdfWidth, margin, "F");
 
                 heightLeft -= usableHeight;
             }
 
             pdf.save(`${user}_Reviewer_Progress.pdf`);
-
             toast({ title: "Success!", description: "Multi-page PDF downloaded successfully." });
         } catch (error) {
             console.error("PDF Export Error:", error);
@@ -260,78 +274,55 @@ const ProfilePage = () => {
         }
     };
 
-    // Load data on initial mount
-    useEffect(() => {
-        if (!token) {
-            toast({ title: "Illegal Entry", description: `Please sign in first!` });
-            navigate("/");
-            return;
-        }
-        fetchLogs(false); // Call with forceRefresh = false
-    }, [token, navigate, backendUrl, toast, user]);
-
     if (!token) return null;
 
-    // Pagination Math
     const totalPages = Math.max(1, Math.ceil(progressData.length / BATCH_SIZE));
     const startIndex = (currentPage - 1) * BATCH_SIZE;
-    const endIndex = startIndex + BATCH_SIZE;
-    const currentBatchData = progressData.slice(startIndex, endIndex);
+    const currentBatchData = progressData.slice(startIndex, startIndex + BATCH_SIZE);
     const allWeakAreas = getAllWeakAreas(progressData);
 
     return (
-        <div className="min-h-screen bg-background p-4 md:p-8">
+        <div className="min-h-screen bg-zinc-50/50 p-4 md:p-8">
             <div className="mx-auto max-w-5xl space-y-6 flex flex-col">
-                {/* Header Buttons */}
-                <div className="flex items-center justify-between">
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => navigate(token ? "/select" : "/")}
-                        className="text-muted-foreground hover:cursor-pointer"
-                    >
-                        <ArrowLeft className="mr-2 h-4 w-4" /> Back
-                    </Button>
 
-                    {/* NEW: Export Button */}
-                    <Button
-                        variant="default"
-                        size="sm"
-                        onClick={handleExportPDF}
-                        disabled={isExporting}
-                        className="gap-2 hover:cursor-pointer"
-                    >
+                {/* Actions Header */}
+                <div className="flex items-center justify-between">
+                    <Button variant="ghost" size="sm" onClick={() => navigate("/select")} className="text-muted-foreground">
+                        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
+                    </Button>
+                    <Button variant="default" size="sm" onClick={handleExportPDF} disabled={isExporting} className="gap-2">
                         <Download className="h-4 w-4" />
                         {isExporting ? "Exporting..." : "Export as PDF"}
                     </Button>
                 </div>
 
-                <div ref={printRef} className="space-y-6 p-2 bg-background">
-                    <Card>
-                        <CardContent className="flex flex-col sm:flex-row items-center gap-5 p-6 ">
-                            <Avatar className="h-20 w-20 border-2 border-primary">
+                {/* Main Content Area (Captured in PDF) */}
+                <div ref={printRef} className="space-y-6 bg-transparent">
+
+                    {/* User Profile Card */}
+                    <Card className="shadow-sm">
+                        <CardContent className="flex flex-col sm:flex-row items-center gap-5 p-6">
+                            <Avatar className="h-20 w-20 border-2 border-primary/20">
                                 <AvatarImage src="" />
-                                <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
+                                <AvatarFallback className="bg-primary/10 text-primary text-2xl">
                                     <User className="h-8 w-8" />
                                 </AvatarFallback>
                             </Avatar>
                             <div className="flex flex-col items-center sm:items-start">
-                                <h1 className="text-2xl font-bold text-foreground">
-                                    {user}
-                                </h1>
+                                <h1 className="text-2xl font-bold text-foreground capitalize">{user}</h1>
                                 <p className="text-muted-foreground">{email}</p>
                             </div>
                         </CardContent>
                     </Card>
 
-                    {/* Subject Cards */}
+                    {/* Mastery Subject Cards */}
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                        {Object.entries(knowledgeScores || {}).map(([subject, data]: [string, any]) => {
+                        {Object.entries(knowledgeScores).map(([subject, data]: [string, any]) => {
                             const label = getMasteryLabel(data.mastery_score);
                             const topTaxonomies = getWeakTaxonomies(subject, progressData);
 
                             return (
-                                <Card key={subject}>
+                                <Card key={subject} className="shadow-sm">
                                     <CardHeader className="flex flex-row items-center gap-2 pb-2">
                                         <span className="text-primary">{subjectIcons[subject]}</span>
                                         <CardTitle className="text-base">{subject}</CardTitle>
@@ -349,15 +340,13 @@ const ProfilePage = () => {
 
                                         <div className="pt-2 space-y-3 border-t mt-2">
                                             {topTaxonomies.length === 0 ? (
-                                                <p className="text-xs text-muted-foreground">
-                                                    No skill gaps identified.
-                                                </p>
+                                                <p className="text-xs text-muted-foreground">No skill gaps identified.</p>
                                             ) : (
                                                 <div className="space-y-1.5">
                                                     <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Skill Gaps</p>
                                                     <div className="flex flex-wrap gap-1.5">
                                                         {topTaxonomies.map((tax: string) => (
-                                                            <Badge key={tax} variant="outline" className="text-[10px] text-orange-600 border-orange-500/30 bg-orange-500/5 hover:bg-orange-500/10">
+                                                            <Badge key={tax} variant="outline" className="text-[10px] text-orange-600 border-orange-500/30 bg-orange-500/5">
                                                                 {tax}
                                                             </Badge>
                                                         ))}
@@ -371,16 +360,11 @@ const ProfilePage = () => {
                         })}
                     </div>
 
-                    <Card>
-                        {/* NEW: Refresh Button added to Header */}
+                    {/* Line Chart */}
+                    <Card className="shadow-sm">
                         <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle>Progress Over Time</CardTitle>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => fetchLogs(true)}
-                                disabled={isRefreshing}
-                            >
+                            <Button variant="outline" size="sm" onClick={() => fetchLogs(true)} disabled={isRefreshing}>
                                 <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
                                 Sync Data
                             </Button>
@@ -390,10 +374,7 @@ const ProfilePage = () => {
                                 <div className="space-y-4">
                                     <ChartContainer config={chartConfig} className="h-[350px] w-full">
                                         <LineChart data={currentBatchData}>
-                                            {/* <CartesianGrid strokeDasharray="3 3" className="stroke-border" /> */}
-
                                             {currentBatchData.map((dataPoint) => {
-                                                // Extract the number from "Q10", "Q20", etc.
                                                 const qNum = parseInt(dataPoint.quiz.replace("Q", ""));
                                                 if (qNum % 10 === 0) {
                                                     return (
@@ -418,9 +399,7 @@ const ProfilePage = () => {
                                                         hideLabel={false}
                                                         formatter={(value, name) => (
                                                             <div className="flex items-center gap-2">
-                                                                <span className="font-bold">
-                                                                    {Math.round(Number(value) * 100)}%:
-                                                                </span>
+                                                                <span className="font-bold">{Math.round(Number(value) * 100)}%:</span>
                                                                 <span className="font-medium text-foreground">
                                                                     {chartConfig[name as keyof typeof chartConfig]?.label || name}
                                                                 </span>
@@ -467,7 +446,7 @@ const ProfilePage = () => {
                         </CardContent>
                     </Card>
 
-                    {/* NEW: Tabbed Question History */}
+                    {/* Question History Tabs */}
                     <Tabs defaultValue="main" className="w-full">
                         <TabsList className="grid w-full grid-cols-2 mb-4">
                             <TabsTrigger value="main">Standard Quizzes</TabsTrigger>
@@ -488,7 +467,7 @@ const ProfilePage = () => {
                                                 <Badge
                                                     key={area}
                                                     variant="secondary"
-                                                    className="justify-center text-center px-3 py-2 bg-background border border-destructive/20 text-destructive hover:bg-destructive/10 transition-colors whitespace-normal"
+                                                    className="justify-center text-center px-3 py-2 bg-white border border-destructive/20 text-destructive hover:bg-destructive/10 whitespace-normal shadow-sm"
                                                 >
                                                     {area}
                                                 </Badge>
@@ -499,7 +478,7 @@ const ProfilePage = () => {
                             )}
 
                             {currentBatchData.length > 0 ? (
-                                <Card>
+                                <Card className="shadow-sm">
                                     <CardHeader>
                                         <CardTitle className="text-xl">Batch {currentPage} Assessment History</CardTitle>
                                     </CardHeader>
@@ -510,19 +489,12 @@ const ProfilePage = () => {
                                                     <div className="space-y-2 flex-1">
                                                         <div className="flex flex-wrap items-center gap-2">
                                                             <Badge variant="outline" className="bg-background">{log.augmented?.subtopic}</Badge>
-                                                            <Badge variant="secondary" className={`bg-background text-xs font-normal ${log.augemented?.difficulty === "Easy" ? "bg-green-600 hover:bg-green-600 text-white font-bold" :
-                                                                log.augmented?.difficulty === "Medium" ? "bg-[#f97415] hover:bg-[#f97415] text-white font-bold" :
-                                                                    log.augmented?.difficulty === "Hard" ? "bg-red-500 hover:bg-red-500 text-white font-bold" :
-                                                                        "text-muted-foreground"
-                                                                }`}
-                                                            >
-                                                                {log.augmented?.difficulty}</Badge>
-                                                            <Badge variant="secondary" className={`text-xs font-bold bg-white hover:bg-white ${log.augmented?.bloom_taxonomy === "Remembering" ? "text-green-600" :
-                                                                log.augmented?.bloom_taxonomy === "Understanding" ? "text-[#f97415]" :
-                                                                    log.augmented?.bloom_taxonomy === "Applying" ? "text-destructive" :
-                                                                        "text-muted-foreground"
-                                                                }`}
-                                                            >{log.augmented?.bloom_taxonomy}</Badge>
+                                                            <Badge variant="secondary" className={`text-xs font-normal ${getDifficultyStyle(log.augmented?.difficulty)}`}>
+                                                                {log.augmented?.difficulty}
+                                                            </Badge>
+                                                            <Badge variant="secondary" className={`text-xs font-bold bg-white hover:bg-white border shadow-sm ${getTaxonomyStyle(log.augmented?.bloom_taxonomy)}`}>
+                                                                {log.augmented?.bloom_taxonomy}
+                                                            </Badge>
                                                         </div>
                                                         <p className="font-medium text-foreground text-sm leading-relaxed">{log.augmented?.question}</p>
                                                         <div className="pt-2">
@@ -551,19 +523,22 @@ const ProfilePage = () => {
                                     </CardContent>
                                 </Card>
                             ) : (
-                                <div className="p-8 text-center text-muted-foreground border rounded-lg">No standard quizzes taken yet.</div>
+                                <div className="p-8 text-center text-muted-foreground border rounded-lg bg-white shadow-sm">
+                                    No standard quizzes taken yet.
+                                </div>
                             )}
                         </TabsContent>
 
                         <TabsContent value="reviews">
-                            <Card className="border-orange-500/20">
-                                <CardHeader className="bg-orange-500/5">
+                            <Card className="border-orange-500/20 shadow-sm">
+                                <CardHeader className="bg-orange-500/5 border-b border-orange-500/10">
                                     <CardTitle className="text-xl text-orange-700">Review Sessions Taken</CardTitle>
+                                    <CardDescription className="text-orange-700/70">Questions targeted specifically to patch your knowledge gaps.</CardDescription>
                                 </CardHeader>
                                 <CardContent className="pt-6 space-y-4">
                                     {reviewData.length > 0 ? (
                                         reviewData.map((review, idx) => (
-                                            <div key={idx} className="flex items-start gap-4 bg-background p-4 rounded-lg border border-orange-500/20 shadow-sm">
+                                            <div key={idx} className="flex items-start gap-4 bg-white p-4 rounded-lg border border-orange-500/20 shadow-sm">
                                                 <div className="shrink-0 mt-1">
                                                     {review.isCorrect ? (
                                                         <CheckCircle2 className="h-6 w-6 text-success" />
@@ -574,12 +549,9 @@ const ProfilePage = () => {
                                                 <div className="flex-1 space-y-2">
                                                     <div className="flex flex-wrap items-center gap-2">
                                                         <Badge variant="outline" className="bg-background">{review.augmented?.subtopic}</Badge>
-                                                        <Badge variant="secondary" className={`text-xs font-bold bg-white hover:bg-white ${review.augmented?.bloom_taxonomy === "Remembering" ? "text-green-600" :
-                                                            review.augmented?.bloom_taxonomy === "Understanding" ? "text-[#f97415]" :
-                                                                review.augmented?.bloom_taxonomy === "Applying" ? "text-destructive" :
-                                                                    "text-muted-foreground"
-                                                            }`}
-                                                        >{review.augmented?.bloom_taxonomy} (Review)</Badge>
+                                                        <Badge variant="secondary" className={`text-xs font-bold bg-white hover:bg-white shadow-sm border ${getTaxonomyStyle(review.augmented?.bloom_taxonomy)}`}>
+                                                            {review.augmented?.bloom_taxonomy} (Review)
+                                                        </Badge>
                                                     </div>
                                                     <p className="font-medium text-foreground text-sm">{review.augmented?.question}</p>
                                                     <p className="text-xs text-muted-foreground pt-1 border-t">
@@ -600,8 +572,6 @@ const ProfilePage = () => {
                     </Tabs>
                 </div>
             </div>
-        </div >
+        </div>
     );
-};
-
-export default ProfilePage;
+}

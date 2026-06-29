@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import type { ValueType, NameType } from "recharts/types/component/DefaultTooltipContent";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Activity, BarChart2, LineChart, Calculator } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -256,7 +257,7 @@ const LatencyAnalytics = () => {
                                     />
                                     <Tooltip
                                         cursor={{ fill: 'var(--muted)', opacity: 0.2 }}
-                                        formatter={(value: number) => [value, "Queries Generated"]}
+                                        formatter={(value: ValueType | undefined) => [value ?? 0, "Queries Generated"]}
                                         labelFormatter={(label) => `${label} seconds`}
                                     />
                                     <Bar dataKey="count" fill="hsl(var(--primary))" radius={[2, 2, 0, 0]} />
@@ -277,10 +278,15 @@ const LatencyAnalytics = () => {
                                         label={{ value: 'Grouped Frequency', angle: -90, position: 'insideLeft' }}
                                     />
                                     <YAxis yAxisId="right" orientation="right" tick={false} axisLine={false} />
-                                    <Tooltip
-                                        formatter={(value: number, name: string) => {
-                                            if (name === "density") return [value.toFixed(4), "Probability Density"];
-                                            return [value, "Queries Generated"];
+                                    /<Tooltip
+                                        formatter={(value: ValueType | undefined, name: NameType | undefined) => {
+                                            if (name === "density") {
+                                                const density =
+                                                    typeof value === "number" ? value.toFixed(4) : String(value ?? "");
+                                                return [density, "Probability Density"];
+                                            }
+
+                                            return [value ?? 0, "Queries Generated"];
                                         }}
                                         labelFormatter={(label) => `Around ${label} s`}
                                     />

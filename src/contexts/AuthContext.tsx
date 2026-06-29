@@ -51,10 +51,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         url: string
     ): ResultAsync<AuthenticationSuccess, AuthenticationError> => {
         setIsLoading(true);
-        const cleanUrl = url.replace(/\/$/, "");
 
         return ResultAsync.fromPromise(
-            fetch(`${cleanUrl}${endpoint}`, {
+            fetch(`${url}${endpoint}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),

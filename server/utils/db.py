@@ -270,7 +270,7 @@ def get_question(
                 "bloom_taxonomy": query_fields.bloom_taxonomy,
                 "difficulty": query_fields.difficulty,
                 "subtopic": query_fields.subtopic,
-                "id": {"$nin": excluded_ids},
+                "question_id": {"$nin": excluded_ids},
                 "options": {"$exists": True},
             }
         },

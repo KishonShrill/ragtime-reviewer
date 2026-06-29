@@ -1,6 +1,7 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
     Select,
@@ -10,28 +11,35 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Zap, PlayCircle, LogOut, Database, Shield, BookOpen, UserCircle, FileText, QrCode, ExternalLink, FileCode, Download, Activity } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
+import {
+    Zap, PlayCircle, LogOut, Database, Shield, BookOpen,
+    UserCircle, FileText, QrCode, ExternalLink, FileCode,
+    Download, Activity, Settings2
+} from "lucide-react";
 
 const subjects = ["General Science", "Chemistry", "Physics", "Biology"];
+const difficulties = ["Easy", "Medium", "Hard"];
 
-const SelectionPage = () => {
-    const { user, role, logout, token } = useAuth();
+export default function SelectionPage() {
     const navigate = useNavigate();
     const { toast } = useToast();
 
-    // Dropdown states for Admin testing
-    const [easy, setEasy] = useState("");
-    const [medium, setMedium] = useState("");
-    const [hard, setHard] = useState("");
-    const [width] = useState(() => window.innerWidth);
+    // Fetch auth data directly from localStorage instead of useAuth
+    const user = localStorage.getItem('reviewer_user');
+    const role = localStorage.getItem('reviewer_role');
+    const token = localStorage.getItem('reviewer_token');
+
+    // Simplified Admin Test states
+    const [testSubject, setTestSubject] = useState("");
+    const [testDifficulty, setTestDifficulty] = useState("");
 
     useEffect(() => {
         if (!token) {
             toast({
-                title: "Illegal Entry",
-                description: `Please sign in first!`,
+                title: "Authentication Required",
+                description: `Please sign in to access the dashboard.`,
+                variant: "destructive"
             });
             navigate("/");
         }
@@ -40,37 +48,32 @@ const SelectionPage = () => {
     if (!token) return null;
 
     const isAdmin = role === "admin";
-    // We assume any logged-in user who reaches here can take the normal quiz
     const canStartQuiz = role === "admin" || role === "regular";
+
+    const handleLogout = () => {
+        // Clear everything from localStorage
+        localStorage.removeItem('reviewer_token');
+        localStorage.removeItem('reviewer_role');
+        localStorage.removeItem('reviewer_email');
+        localStorage.removeItem('reviewer_user');
+        localStorage.removeItem('reviewer_backend_url');
+        localStorage.removeItem('reviewer_knowledge_scores');
+        localStorage.removeItem(`reviewer_quizLogs_${user}`);
+
+        navigate("/");
+    };
 
     const handleStartQuiz = () => {
         if (!canStartQuiz) return;
         toast({ title: "Starting Quiz!", description: "Loading your customized questions..." });
-        navigate("/quiz", {
-            state: { started: true },
-        });
+        navigate("/quiz", { state: { started: true } });
     };
 
-    // Previously "handleFreeTrial" - now strictly an Admin testing tool
     const handleAdminTestQuiz = () => {
-        let selectedDifficulty = "";
-        let selectedSubject = "";
-
-        if (easy) {
-            selectedDifficulty = "Easy";
-            selectedSubject = easy;
-        } else if (medium) {
-            selectedDifficulty = "Medium";
-            selectedSubject = medium;
-        } else if (hard) {
-            selectedDifficulty = "Hard";
-            selectedSubject = hard;
-        }
-
-        if (!selectedSubject) {
+        if (!testSubject || !testDifficulty) {
             toast({
                 title: "Selection Required",
-                description: "Please select a subject and difficulty to run a test.",
+                description: "Please select both a subject and difficulty to run a test.",
                 variant: "destructive"
             });
             return;
@@ -78,236 +81,194 @@ const SelectionPage = () => {
 
         toast({
             title: "Admin Test Run",
-            description: `Loading ${selectedDifficulty} ${selectedSubject} questions...`
+            description: `Loading ${testDifficulty} ${testSubject} questions...`
         });
 
         const queryParams = new URLSearchParams({
             mode: "trial",
-            difficulty: selectedDifficulty,
-            subject: selectedSubject
+            difficulty: testDifficulty,
+            subject: testSubject
         }).toString();
 
         navigate(`/quiz?${queryParams}`, {
             state: {
                 started: true,
-                difficulty: selectedDifficulty,
-                subject: selectedSubject
+                difficulty: testDifficulty,
+                subject: testSubject
             },
         });
     };
 
-    const handleLogout = () => {
-        logout();
-        navigate("/");
-    };
-
-    const handleProfile = () => navigate("/profile");
-
     return (
-        <div className="flex min-h-screen items-center justify-center bg-background p-4">
-            <Card className="w-full max-w-lg shadow-xl border-border/50">
+        <div className="min-h-screen bg-zinc-50/50 p-4 md:p-8">
+            <div className="mx-auto max-w-4xl space-y-6">
 
-                {/* --- HEADER (Visible to Everyone) --- */}
-                <CardHeader className="text-center space-y-2 pb-4">
-                    <div className="flex items-center justify-between">
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={handleProfile}
-                            className="text-sm text-muted-foreground hover:bg-emerald-500/10 hover:text-emerald-600 transition-colors"
-                        >{width > 600
-                            ? (
-                                <>
-                                    Hi, <span className="font-semibold text-foreground uppercase mx-1">{user}</span>
-                                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium capitalize ${isAdmin ? 'bg-destructive/15 text-destructive' : 'bg-accent/15 text-accent'}`}>
-                                        {role?.replace("_", " ")}
-                                    </span>
-                                </>
-                            ) : (
-                                <><UserCircle className="h-3.5 w-3.5" />Profile</>
-                            )}
-                        </Button>
-                        {width <= 600 && (
-                            <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium capitalize ${isAdmin ? 'bg-destructive/15 text-destructive' : 'bg-accent/15 text-accent'}`}>
-                                {role?.replace("_", " ")}
-                            </span>
-                        )}
-                        <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-1 text-muted-foreground">
-                            Logout <LogOut className="h-3.5 w-3.5" />
-                        </Button>
-                    </div>
-                </CardHeader>
-
-                <CardContent className="space-y-8">
-
-                    {/* --- STUDENT CONSOLE (Visible to Everyone) --- */}
-                    <div className="space-y-6">
-                        <div className="text-center space-y-1">
-                            <CardTitle className="text-2xl font-bold text-foreground">Adaptive Reviewer</CardTitle>
-                            <p className="text-sm text-muted-foreground">Ready to test your knowledge?</p>
+                {/* --- DASHBOARD HEADER --- */}
+                <header className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-2xl bg-white p-4 shadow-sm border border-border/50">
+                    <div className="flex items-center gap-3 w-full sm:w-auto">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+                            <UserCircle className="h-6 w-6 text-primary" />
                         </div>
-
-                        <Button
-                            className="w-full h-20 text-lg gap-3 shadow-md transition-transform active:scale-[0.98]"
-                            disabled={!canStartQuiz}
-                            onClick={handleStartQuiz}
-                        >
-                            <PlayCircle className="h-6 w-6" />
-                            Start Adaptive Quiz
-                        </Button>
-                    </div>
-
-                    {/* --- COURSE MATERIALS / DOWNLOADS (Visible to Everyone) --- */}
-                    <div className="pt-6 border-t border-border/60 flex flex-col items-center text-center space-y-4">
-                        <div className="space-y-1">
-                            <h3 className="font-bold text-foreground flex items-center justify-center gap-2">
-                                <FileCode className="h-4 w-4 text-primary" />
-                                Interactive Materials
-                            </h3>
-                            <p className="text-xs text-muted-foreground">
-                                Download the required Google Colab files for your offline review sessions.
-                            </p>
-                        </div>
-
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            asChild
-                            className="w-full bg-blue-50/50 hover:bg-blue-100/50 text-blue-700 border-blue-200"
-                        >
-                            <a
-                                href="https://we.tl/t-8BJ273u8Toz01Bx1"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                            >
-                                <Download className="h-4 w-4 mr-2" />
-                                Download Colab File via WeTransfer
-                            </a>
-                        </Button>
-                    </div>
-
-                    {/* --- EVALUATION FORM (Visible to Everyone) --- */}
-                    <div className="pt-6 border-t border-border/60 flex flex-col items-center text-center space-y-4">
-                        <div className="space-y-1">
-                            <h3 className="font-bold text-foreground flex items-center justify-center gap-2">
-                                <QrCode className="h-4 w-4 text-primary" />
-                                App Evaluation Form
-                            </h3>
-                            <p className="text-xs text-muted-foreground">
-                                Scan the QR code or click the link below to provide your feedback after testing.
-                            </p>
-                        </div>
-
-                        <img
-                            src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=https://docs.google.com/forms/d/e/1FAIpQLSc9BRsQwIjl-AfXLy3mGLaf1NsjTK5v_4iBtZe9qLimw67h5Q/viewform?usp=publish-editor"
-                            alt="Google Form QR Code"
-                            className="h-36 w-36 rounded-md shadow-sm border border-border/50 p-1 bg-white"
-                        />
-
-                        <Button variant="outline" size="sm" asChild className="w-full">
-                            <a
-                                href="https://docs.google.com/forms/d/e/1FAIpQLSc9BRsQwIjl-AfXLy3mGLaf1NsjTK5v_4iBtZe9qLimw67h5Q/viewform?usp=publish-editor"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                            >
-                                <ExternalLink className="h-4 w-4 mr-2" />
-                                Open Form in Browser
-                            </a>
-                        </Button>
-                    </div>
-
-                    {/* --- ADMIN CONSOLE (Visible only to Admins) --- */}
-                    {isAdmin && (
-                        <div className="pt-6 border-t border-border/60 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div>
                             <div className="flex items-center gap-2">
-                                <Shield className="h-5 w-5 text-destructive" />
-                                <h3 className="text-lg font-bold text-foreground tracking-tight">Admin Console</h3>
+                                <h1 className="font-semibold text-lg leading-none uppercase">{user}</h1>
+                                <Badge variant={isAdmin ? "destructive" : "secondary"} className="h-5 capitalize">
+                                    {role?.replace("_", " ")}
+                                </Badge>
                             </div>
+                            <p className="text-sm text-muted-foreground mt-1">Welcome to your dashboard</p>
+                        </div>
+                    </div>
 
-                            {/* Admin Actions - Restructured to a Grid for clean alignment */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <Button variant="outline" size="sm" onClick={() => navigate("/profile")} className="w-full sm:w-auto">
+                            <UserCircle className="h-4 w-4 mr-2" /> Profile
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={handleLogout} className="text-muted-foreground hover:text-destructive font-bold w-full sm:w-auto">
+                            <LogOut className="h-4 w-4 mr-2" /> Logout
+                        </Button>
+                    </div>
+                </header>
+
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+
+                    {/* --- MAIN ACTION AREA (Left Column on Desktop) --- */}
+                    <div className={`${role === "regular" ? 'md:col-span-12' : 'md:col-span-7'} space-y-6`}>
+
+                        {/* Student Console */}
+                        <Card className="border-primary/20 shadow-md">
+                            <CardHeader>
+                                <CardTitle className="text-2xl flex items-center gap-2">
+                                    <PlayCircle className="h-6 w-6 text-primary" />
+                                    Adaptive Reviewer
+                                </CardTitle>
+                                <CardDescription>Start your personalized learning session based on your current knowledge scores.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
                                 <Button
-                                    variant="outline"
-                                    className="w-full h-12 gap-2 justify-start px-4"
-                                    onClick={() => navigate("/knowledge_base")}
+                                    className="w-full h-16 text-lg gap-3 shadow-sm transition-transform active:scale-[0.98]"
+                                    disabled={!canStartQuiz}
+                                    onClick={handleStartQuiz}
                                 >
-                                    <Database className="h-4 w-4 text-primary" />
-                                    Knowledge Base
+                                    <Zap className="h-5 w-5" />
+                                    Start Adaptive Quiz
                                 </Button>
+                            </CardContent>
+                        </Card>
 
-                                <Button
-                                    variant="outline"
-                                    className="w-full h-12 gap-2 justify-start px-4"
-                                    onClick={() => navigate("/sme-validation")}
-                                >
-                                    <FileText className="h-4 w-4 text-primary" />
-                                    SME Validation
-                                </Button>
+                        {/* Resources & Feedback */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <Card>
+                                <CardContent className="pt-6 text-center space-y-4">
+                                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50">
+                                        <FileCode className="h-6 w-6 text-blue-600" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <h3 className="font-semibold">Offline Materials</h3>
+                                        <p className="text-xs text-muted-foreground leading-tight">Get the required Google Colab files for offline review sessions.</p>
+                                    </div>
+                                    <Button variant="outline" className="w-full text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200" asChild>
+                                        <a href="https://we.tl/t-8BJ273u8Toz01Bx1" target="_blank" rel="noopener noreferrer">
+                                            <Download className="h-4 w-4 mr-2" /> Download
+                                        </a>
+                                    </Button>
+                                </CardContent>
+                            </Card>
 
-                                {/* NEW: System Latency Analytics Button */}
-                                <Button
-                                    variant="outline"
-                                    className="w-full sm:col-span-2 h-12 gap-2 justify-center px-4 border-primary/20 hover:bg-primary/5"
-                                    onClick={() => navigate("/latency")}
-                                >
-                                    <Activity className="h-4 w-4 text-primary" />
-                                    System Latency Analytics (Bell Curve)
-                                </Button>
-                            </div>
-                            {/* Test Configuration */}
-                            <div className="space-y-4 p-4 bg-muted/30 rounded-lg border border-border/50">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <BookOpen className="h-4 w-4 text-muted-foreground" />
-                                    <Label className="font-semibold text-foreground">Test Specific Configuration</Label>
-                                </div>
+                            <Card>
+                                <CardContent className="pt-6 text-center space-y-4">
+                                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100">
+                                        <QrCode className="h-6 w-6 text-zinc-600" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <h3 className="font-semibold">App Evaluation</h3>
+                                        <p className="text-xs text-muted-foreground leading-tight">Provide your feedback after testing the adaptive features.</p>
+                                    </div>
+                                    <Button variant="outline" className="w-full" asChild>
+                                        <a href="https://docs.google.com/forms/d/e/1FAIpQLSc9BRsQwIjl-AfXLy3mGLaf1NsjTK5v_4iBtZe9qLimw67h5Q/viewform?usp=publish-editor" target="_blank" rel="noopener noreferrer">
+                                            <ExternalLink className="h-4 w-4 mr-2" /> Open Form
+                                        </a>
+                                    </Button>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    </div>
 
-                                <div className="grid grid-cols-3 gap-3">
-                                    {[
-                                        { label: "Easy", value: easy, setter: setEasy, clear: [setMedium, setHard] },
-                                        { label: "Medium", value: medium, setter: setMedium, clear: [setEasy, setHard] },
-                                        { label: "Hard", value: hard, setter: setHard, clear: [setEasy, setMedium] },
-                                    ].map(({ label, value, setter, clear }) => (
-                                        <div key={label} className="space-y-2">
-                                            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                                                {label}
-                                            </Label>
-                                            <Select
-                                                value={value}
-                                                onValueChange={(val) => {
-                                                    setter(val === "null" ? "" : val);
-                                                    clear[0]("");
-                                                    clear[1]("");
-                                                }}
-                                            >
-                                                <SelectTrigger className="h-9 bg-background">
-                                                    <SelectValue placeholder="Subject" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="null">Subject</SelectItem>
-                                                    {subjects.map((s) => (
-                                                        <SelectItem key={s} value={s}>{s}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
+                    {/* --- ADMIN CONSOLE (Right Column on Desktop) --- */}
+                    {isAdmin && (
+                        <div className="md:col-span-5 space-y-6">
+                            <Card className="border-destructive/20 bg-destructive/5 shadow-none h-full">
+                                <CardHeader className="pb-4 border-b border-destructive/10">
+                                    <CardTitle className="text-lg flex items-center gap-2 text-destructive">
+                                        <Shield className="h-5 w-5" /> Admin Console
+                                    </CardTitle>
+                                    <CardDescription>Manage knowledge bases and system latency.</CardDescription>
+                                </CardHeader>
+
+                                <CardContent className="pt-6 space-y-6">
+                                    {/* Admin Actions */}
+                                    <div className="space-y-3">
+                                        <Button variant="secondary" className="text-black w-full justify-start bg-white hover:bg-zinc-100 border shadow-sm" onClick={() => navigate("/knowledge_base")}>
+                                            <Database className="h-4 w-4 mr-3 text-muted-foreground" /> Knowledge Base
+                                        </Button>
+                                        <Button variant="secondary" className="text-black w-full justify-start bg-white hover:bg-zinc-100 border shadow-sm" onClick={() => navigate("/sme-validation")}>
+                                            <FileText className="h-4 w-4 mr-3 text-muted-foreground" /> SME Validation
+                                        </Button>
+                                        <Button variant="secondary" className="text-black w-full justify-start bg-white hover:bg-zinc-100 border shadow-sm" onClick={() => navigate("/latency")}>
+                                            <Activity className="h-4 w-4 mr-3 text-muted-foreground" /> Latency Analytics
+                                        </Button>
+                                    </div>
+
+                                    {/* Test Configurator */}
+                                    <div className="rounded-xl border bg-white p-4 shadow-sm space-y-4">
+                                        <div className="flex items-center gap-2 border-b pb-2">
+                                            <Settings2 className="h-4 w-4 text-muted-foreground" />
+                                            <h4 className="font-semibold text-sm">Test Specific Config</h4>
                                         </div>
-                                    ))}
-                                </div>
 
-                                <Button
-                                    variant="secondary"
-                                    className="w-full mt-4 gap-2 border border-border/50"
-                                    onClick={handleAdminTestQuiz}
-                                >
-                                    <Zap className="h-4 w-4" />
-                                    Run Trial Quiz
-                                </Button>
-                            </div>
+                                        <div className="space-y-3">
+                                            <div className="space-y-1.5">
+                                                <Label className="text-xs text-muted-foreground">Subject</Label>
+                                                <Select value={testSubject} onValueChange={setTestSubject}>
+                                                    <SelectTrigger className="h-9">
+                                                        <SelectValue placeholder="Select topic" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {subjects.map((s) => (
+                                                            <SelectItem key={s} value={s}>{s}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+
+                                            <div className="space-y-1.5">
+                                                <Label className="text-xs text-muted-foreground">Difficulty</Label>
+                                                <Select value={testDifficulty} onValueChange={setTestDifficulty}>
+                                                    <SelectTrigger className="h-9">
+                                                        <SelectValue placeholder="Select level" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {difficulties.map((d) => (
+                                                            <SelectItem key={d} value={d}>{d}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+
+                                            <Button
+                                                className="w-full mt-2 bg-zinc-900 hover:bg-zinc-800"
+                                                onClick={handleAdminTestQuiz}
+                                            >
+                                                <PlayCircle className="h-4 w-4 mr-2" /> Run Trial
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
                         </div>
                     )}
-                </CardContent>
-            </Card>
+                </div>
+            </div>
         </div>
     );
-};
-
-export default SelectionPage;
+}
